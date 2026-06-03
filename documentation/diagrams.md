@@ -174,7 +174,6 @@ classDiagram
 
 ```mermaid
 erDiagram
-
     Tenant {
         int id PK
         string slug
@@ -240,6 +239,7 @@ erDiagram
         boolean store_pickup
         string notes
         string tracking_uuid
+        timestamp updated_at
         timestamp created_at
         int tenant_id FK
         int customer_id FK

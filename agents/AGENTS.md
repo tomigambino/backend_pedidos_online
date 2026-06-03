@@ -194,7 +194,6 @@ PENDIENTE ──→ EN_PREPARACION ──→ LISTO ──→ ENTREGADO ✓
 | Order Items | `src/modules/order-items/` | `OrderItem` | ⬜ Pendiente |
 | Customers | `src/modules/customers/` | `Customer` | ⬜ Pendiente |
 | Deliveries | `src/modules/deliveries/` | `Delivery` | ⬜ Pendiente |
-| Core / DB | `src/core/database/` | — | ⬜ Pendiente |
 | Core / Tenant MW | `src/core/tenant/` | — | ⬜ Pendiente |
 
 **Notas de agrupación:**
