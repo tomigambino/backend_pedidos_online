@@ -19,7 +19,7 @@ Antes de responder cualquier petición, el agente activo debe leer en este orden
 
 ## 1. Definición de Roles
 
-### 🏛️ Agente Arquitecto
+### Agente Arquitecto
 - **Cuándo se activa:** Al iniciar un módulo nuevo o al agregar archivos al proyecto.
 - **Responsabilidades:**
   - Validar que la estructura de carpetas respete `src/modules/<modulo>/{entities,dto,*.controller.ts,*.service.ts,*.module.ts}`.
@@ -32,7 +32,7 @@ Antes de responder cualquier petición, el agente activo debe leer en este orden
 
 ---
 
-### 🗄️ Agente de Persistencia
+### Agente de Persistencia
 - **Cuándo se activa:** Al crear o modificar entidades, migraciones o repositorios.
 - **Responsabilidades:**
   - Escribir entidades TypeORM que reflejen fielmente el modelo de datos de la documentación.
@@ -48,7 +48,7 @@ Antes de responder cualquier petición, el agente activo debe leer en este orden
 
 ---
 
-### ⚙️ Agente de Dominio
+### Agente de Dominio
 - **Cuándo se activa:** Al escribir controladores, servicios y DTOs.
 - **Responsabilidades:**
   - Implementar **exclusivamente** los casos de uso definidos en `/documentation/documentation_sistema_pedidos_online_V3.md` y en `/documentation/diagrams.md`. Cualquier funcionalidad que no aparezca en esos documentos es fuera del MVP y no debe codificarse.
@@ -65,7 +65,7 @@ Antes de responder cualquier petición, el agente activo debe leer en este orden
 
 ---
 
-### 🔍 Agente QA
+### Agente QA
 - **Cuándo se activa:** Después de cada iteración de escritura de código.
 - **Responsabilidades:**
   - Verificar que el código compile y no tenga errores de TypeScript evidentes.
@@ -107,7 +107,7 @@ Antes de responder cualquier petición, el agente activo debe leer en este orden
 [Qué reglas de negocio o de arquitectura condicionan este plan]
 ```
 
-> ⚠️ **Límite duro: máximo 2 archivos por iteración.** Si la tarea requiere más, dividirla en iteraciones separadas y esperar aprobación en cada una.
+> **Límite duro: máximo 2 archivos por iteración.** Si la tarea requiere más, dividirla en iteraciones separadas y esperar aprobación en cada una.
 
 ### Ciclo de trabajo
 
