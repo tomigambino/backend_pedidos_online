@@ -59,29 +59,16 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto) {
-    const tenant = await this.tenantRepo.findOne({
-      where: { slug: dto.slug },
-    });
-    if (!tenant) {
-      throw new UnauthorizedException('Credenciales inválidas');
-    }
-
+  async login(dto: LoginDto, tenantId: string) {
     const user = await this.userRepo.findOne({
-      where: { email: dto.email, tenantId: tenant.id },
+      where: { email: dto.email, tenantId },
     });
-    if (!user) {
-      throw new UnauthorizedException('Credenciales inválidas');
-    }
+    if (!user) throw new UnauthorizedException('Credenciales inválidas');
 
     const isValid = await bcrypt.compare(dto.password, user.password);
-    if (!isValid) {
-      throw new UnauthorizedException('Credenciales inválidas');
-    }
+    if (!isValid) throw new UnauthorizedException('Credenciales inválidas');
 
     const payload = { userId: user.id, tenantId: user.tenantId };
-    return {
-      accessToken: this.jwtService.sign(payload),
-    };
+    return { accessToken: this.jwtService.sign(payload) };
   }
 }
