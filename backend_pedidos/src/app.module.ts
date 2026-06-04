@@ -49,6 +49,7 @@ export class AppModule implements NestModule {
         { path: '/:tenant/orders', method: RequestMethod.POST },
         { path: '/:tenant/auth', method: RequestMethod.ALL },
         { path: '/:tenant/auth/*path', method: RequestMethod.ALL },
+        { path: '/:tenant/categories', method: RequestMethod.ALL },
       );
   }
 }
