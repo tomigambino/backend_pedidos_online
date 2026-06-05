@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
@@ -62,6 +62,14 @@ export class ProductsService {
     product.isActive = false;
     const saved = await this.productRepo.save(product);
     return this.toResponse(saved);
+  }
+
+  async findOneForOrder(id: string, tenantId: string): Promise<Product> {
+    const product = await this.productRepo.findOne({
+      where: { id, tenantId, isActive: true },
+    });
+    if (!product) throw new BadRequestException(`Producto ${id} no disponible`);
+    return product;
   }
 
   private async findOneOrFail(id: string, tenantId: string): Promise<Product> {

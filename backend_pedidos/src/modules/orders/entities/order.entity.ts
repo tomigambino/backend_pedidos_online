@@ -36,8 +36,8 @@ export class Order {
   @Column({ name: 'tracking_uuid', unique: true })
   trackingUuid: string;
 
-  @Column({ name: 'cancellation_reason', nullable: true })
-  cancellationReason: string;
+  @Column({ name: 'cancellation_reason', type: 'varchar', nullable: true })
+  cancellationReason: string | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   total: number;

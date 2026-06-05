@@ -12,9 +12,9 @@ export class Customer {
   @Column()
   name: string;
 
-  @Column({ nullable: true })
-  phone: string;
+  @Column({ type: 'varchar', nullable: true })
+  phone: string | null;
 
-  @Column({ nullable: true })
-  address: string;
+  @Column({ type: 'varchar', nullable: true })
+  address: string | null;
 }
