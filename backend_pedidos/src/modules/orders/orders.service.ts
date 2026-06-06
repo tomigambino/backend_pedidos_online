@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, Between } from 'typeorm';
+import { DataSource, Repository, Between, Not } from 'typeorm';
 import { v4 as uuid } from 'uuid';
 import { Order } from './entities/order.entity';
 import { Delivery } from './entities/delivery.entity';
@@ -205,32 +205,28 @@ export class OrdersService {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    const [ordersToday, pendingOrders, revenueResult] = await Promise.all([
+    const [ordersToday, pendingOrders, todayOrders] = await Promise.all([
       this.orderRepo.count({
         where: { tenantId, createdAt: Between(todayStart, todayEnd) },
       }),
       this.orderRepo.count({
         where: { tenantId, status: OrderStatus.PENDIENTE },
       }),
-      this.orderRepo
-        .createQueryBuilder('order')
-        .select('COALESCE(SUM(order.total), 0)', 'total')
-        .where('order.tenant_id = :tenantId', { tenantId })
-        .andWhere('order.created_at BETWEEN :start AND :end', {
-          start: todayStart,
-          end: todayEnd,
-        })
-        .andWhere('order.status != :cancelled', {
-          cancelled: OrderStatus.CANCELADO,
-        })
-        .getRawOne<{ total: string }>(),
+      this.orderRepo.find({
+        where: {
+          tenantId,
+          createdAt: Between(todayStart, todayEnd),
+          status: Not(OrderStatus.CANCELADO),
+        },
+      }),
     ]);
 
-    return {
-      ordersToday,
-      revenueToday: Number(revenueResult?.total ?? 0),
-      pendingOrders,
-    };
+    const revenueToday = todayOrders.reduce(
+      (sum, o) => sum + Number(o.total),
+      0,
+    );
+
+    return { ordersToday, revenueToday, pendingOrders };
   }
 
   private toResponse(order: Order): OrderResponseDto {
