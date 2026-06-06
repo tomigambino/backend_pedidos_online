@@ -34,8 +34,8 @@ export class AvailabilityException {
   @Column({ name: 'closing_time', type: 'time', nullable: true })
   closingTime: string | null;
 
-  @Column({ nullable: true })
-  reason: string;
+  @Column({ type: 'varchar', nullable: true })
+  reason: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

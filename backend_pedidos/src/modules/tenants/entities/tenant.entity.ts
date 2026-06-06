@@ -41,6 +41,24 @@ export class Tenant{
   })
   deliveryCost: number;
 
+  @Column({ nullable: true })
+  description: string;
+
+  @Column({ name: 'is_open', default: true })
+  isOpen: boolean;
+
+  @Column({ nullable: true })
+  cbu: string;
+
+  @Column({ nullable: true })
+  alias: string;
+
+  @Column({ name: 'account_holder', nullable: true })
+  accountHolder: string;
+
+  @Column({ nullable: true })
+  bank: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
