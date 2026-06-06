@@ -21,6 +21,14 @@ export class ProductsService {
     return products.map(p => this.toResponse(p));
   }
 
+  async findAllAdmin(tenantId: string): Promise<ProductResponseDto[]> {
+    const products = await this.productRepo.find({
+      where: { tenantId },
+      order: { name: 'ASC' },
+    });
+    return products.map(p => this.toResponse(p));
+  }
+
   async findOne(id: string, tenantId: string): Promise<ProductResponseDto> {
     const product = await this.findOneOrFail(id, tenantId);
     return this.toResponse(product);

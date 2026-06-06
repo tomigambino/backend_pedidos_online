@@ -52,6 +52,8 @@ export class AppModule implements NestModule {
         { path: '/:tenant/auth/*path', method: RequestMethod.ALL },
         { path: '/:tenant/categories', method: RequestMethod.ALL },
         { path: '/:tenant/products', method: RequestMethod.ALL },
+        { path: '/:tenant/products/admin', method: RequestMethod.GET },
+        { path: '/:tenant/orders/:uuid/customer/phone', method: RequestMethod.PATCH },
         { path: '/:tenant/availability', method: RequestMethod.GET },
         { path: '/:tenant/admin/*path', method: RequestMethod.ALL },
         { path: '/:tenant/orders/:uuid/status-stream', method: RequestMethod.GET },

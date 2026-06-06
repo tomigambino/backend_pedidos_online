@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, Between } from 'typeorm';
 import { v4 as uuid } from 'uuid';
 import { Order } from './entities/order.entity';
 import { Delivery } from './entities/delivery.entity';
@@ -12,6 +12,7 @@ import { Tenant } from '../tenants/entities/tenant.entity';
 import { ProductsService } from '../products/products.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
+import { StatsResponseDto } from './dto/stats-response.dto';
 import { TERMINAL_STATES, VALID_TRANSITIONS } from './constants/order-transitions';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { OrderItem } from './entities/order-item.entity';
@@ -25,6 +26,8 @@ export class OrdersService {
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
+    @InjectRepository(Customer)
+    private readonly customerRepo: Repository<Customer>,
     private readonly productsService: ProductsService,
     private readonly sseService: OrdersSseService,
     private readonly dataSource: DataSource,
@@ -143,6 +146,91 @@ export class OrdersService {
     }
 
     return this.toResponse(saved);
+  }
+
+  async getWhatsAppLink(
+    id: string,
+    tenantId: string,
+  ): Promise<{ url: string; message: string }> {
+    const order = await this.orderRepo.findOne({
+      where: { id, tenantId },
+      relations: { customer: true },
+    });
+    if (!order) throw new NotFoundException('Pedido no encontrado');
+
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    const customerPhone = order.customer?.phone;
+    if (!customerPhone) {
+      throw new BadRequestException('El cliente no tiene teléfono registrado');
+    }
+
+    const statusLabels: Record<string, string> = {
+      PENDIENTE: 'pendiente',
+      EN_PREPARACION: 'en preparación',
+      LISTO: 'listo para retirar',
+      ENTREGADO: 'entregado',
+      CANCELADO: 'cancelado',
+      NO_RETIRADO: 'no retirado',
+    };
+
+    const message = `¡Hola! Tu pedido en ${tenant?.name ?? 'el local'} está ${statusLabels[order.status] ?? order.status}. Seguilo acá: https://tuapp.com/${tenant?.slug ?? ''}/pedido/${order.trackingUuid}`;
+    const encoded = encodeURIComponent(message);
+    const phone = customerPhone.replace(/[^\d]/g, '');
+    return { url: `https://wa.me/${phone}?text=${encoded}`, message };
+  }
+
+  async updateCustomerPhone(
+    trackingUuid: string,
+    tenantId: string,
+    phone: string,
+  ): Promise<{ phone: string }> {
+    const order = await this.orderRepo.findOne({
+      where: { trackingUuid, tenantId },
+    });
+    if (!order) throw new NotFoundException('Pedido no encontrado');
+
+    const customer = await this.customerRepo.findOne({
+      where: { id: order.customerId },
+    });
+    if (!customer) throw new NotFoundException('Cliente no encontrado');
+
+    customer.phone = phone;
+    await this.customerRepo.save(customer);
+    return { phone };
+  }
+
+  async getStats(tenantId: string): Promise<StatsResponseDto> {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const [ordersToday, pendingOrders, revenueResult] = await Promise.all([
+      this.orderRepo.count({
+        where: { tenantId, createdAt: Between(todayStart, todayEnd) },
+      }),
+      this.orderRepo.count({
+        where: { tenantId, status: OrderStatus.PENDIENTE },
+      }),
+      this.orderRepo
+        .createQueryBuilder('order')
+        .select('COALESCE(SUM(order.total), 0)', 'total')
+        .where('order.tenant_id = :tenantId', { tenantId })
+        .andWhere('order.created_at BETWEEN :start AND :end', {
+          start: todayStart,
+          end: todayEnd,
+        })
+        .andWhere('order.status != :cancelled', {
+          cancelled: OrderStatus.CANCELADO,
+        })
+        .getRawOne<{ total: string }>(),
+    ]);
+
+    return {
+      ordersToday,
+      revenueToday: Number(revenueResult?.total ?? 0),
+      pendingOrders,
+    };
   }
 
   private toResponse(order: Order): OrderResponseDto {

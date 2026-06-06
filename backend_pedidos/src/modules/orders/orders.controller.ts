@@ -18,6 +18,7 @@ import { TenantId } from '../../common/decorators/tenant-id.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth/jwt-auth.guard';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateCustomerPhoneDto } from './dto/update-customer-phone.dto';
 import { TERMINAL_STATES } from './constants/order-transitions';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 
@@ -69,6 +70,30 @@ export class OrdersController {
     @TenantId() tenantId: string,
   ) {
     return this.ordersService.findByTracking(uuid, tenantId);
+  }
+
+  @Get('admin/stats')
+  @UseGuards(JwtAuthGuard)
+  stats(@TenantId() tenantId: string) {
+    return this.ordersService.getStats(tenantId);
+  }
+
+  @Get(':id/whatsapp-link')
+  @UseGuards(JwtAuthGuard)
+  whatsappLink(
+    @Param('id', ParseUUIDPipe) id: string,
+    @TenantId() tenantId: string,
+  ) {
+    return this.ordersService.getWhatsAppLink(id, tenantId);
+  }
+
+  @Patch(':uuid/customer/phone')
+  updatePhone(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @TenantId() tenantId: string,
+    @Body() dto: UpdateCustomerPhoneDto,
+  ) {
+    return this.ordersService.updateCustomerPhone(uuid, tenantId, dto.phone);
   }
 
   // Público — sin JwtAuthGuard

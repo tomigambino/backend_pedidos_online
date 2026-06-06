@@ -24,6 +24,12 @@ export class ProductsController {
     return this.productsService.findAll(tenantId);
   }
 
+  @Get('admin')
+  @UseGuards(JwtAuthGuard)
+  findAllAdmin(@TenantId() tenantId: string) {
+    return this.productsService.findAllAdmin(tenantId);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   findOne(
