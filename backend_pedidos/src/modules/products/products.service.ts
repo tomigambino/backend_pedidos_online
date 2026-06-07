@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
+import { Category } from '../categories/entities/category.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
@@ -11,6 +12,8 @@ export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly productRepo: Repository<Product>,
+    @InjectRepository(Category)
+    private readonly categoryRepo: Repository<Category>,
   ) {}
 
   async findAll(tenantId: string): Promise<ProductResponseDto[]> {
@@ -35,6 +38,7 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto, tenantId: string): Promise<ProductResponseDto> {
+    await this.validateCategory(dto.categoryId, tenantId);
     const product = new Product();
     product.name = dto.name;
     product.description = dto.description ?? null;
@@ -48,6 +52,9 @@ export class ProductsService {
 
   async update(id: string, dto: UpdateProductDto, tenantId: string): Promise<ProductResponseDto> {
     const product = await this.findOneOrFail(id, tenantId);
+    if (dto.categoryId) {
+      await this.validateCategory(dto.categoryId, tenantId);
+    }
     this.productRepo.merge(product, dto);
     const saved = await this.productRepo.save(product);
     return this.toResponse(saved);
@@ -78,6 +85,13 @@ export class ProductsService {
     });
     if (!product) throw new BadRequestException(`Producto ${id} no disponible`);
     return product;
+  }
+
+  private async validateCategory(categoryId: string, tenantId: string): Promise<void> {
+    const category = await this.categoryRepo.findOne({ where: { id: categoryId, tenantId } });
+    if (!category) {
+      throw new BadRequestException('Categoría no encontrada o no pertenece a este negocio');
+    }
   }
 
   private async findOneOrFail(id: string, tenantId: string): Promise<Product> {
