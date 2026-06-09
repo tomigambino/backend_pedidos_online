@@ -6,6 +6,8 @@ import { Category } from '../categories/entities/category.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
+import { PaginatedResult } from '../../common/interfaces/paginated-result.interface';
 
 @Injectable()
 export class ProductsService {
@@ -16,20 +18,38 @@ export class ProductsService {
     private readonly categoryRepo: Repository<Category>,
   ) {}
 
-  async findAll(tenantId: string): Promise<ProductResponseDto[]> {
-    const products = await this.productRepo.find({
+  async findAll(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<ProductResponseDto>> {
+    const { page = 1, limit = 10 } = pagination ?? {};
+    const [products, total] = await this.productRepo.findAndCount({
       where: { tenantId, isActive: true },
+      skip: (page - 1) * limit,
+      take: limit,
       order: { name: 'ASC' },
     });
-    return products.map(p => this.toResponse(p));
+    return {
+      data: products.map(p => this.toResponse(p)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
-  async findAllAdmin(tenantId: string): Promise<ProductResponseDto[]> {
-    const products = await this.productRepo.find({
+  async findAllAdmin(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<ProductResponseDto>> {
+    const { page = 1, limit = 10 } = pagination ?? {};
+    const [products, total] = await this.productRepo.findAndCount({
       where: { tenantId },
+      skip: (page - 1) * limit,
+      take: limit,
       order: { name: 'ASC' },
     });
-    return products.map(p => this.toResponse(p));
+    return {
+      data: products.map(p => this.toResponse(p)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findOne(id: string, tenantId: string): Promise<ProductResponseDto> {

@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Sse,
   UseGuards,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import { Observable, concat, defer } from 'rxjs';
 import { map, takeWhile } from 'rxjs/operators';
 import { OrdersService } from './orders.service';
 import { OrdersSseService } from './orders-sse.service';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 import { TenantId } from '../../common/decorators/tenant-id.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth/jwt-auth.guard';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -36,8 +38,11 @@ export class OrdersController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  findAll(@TenantId() tenantId: string) {
-    return this.ordersService.findAll(tenantId);
+  findAll(
+    @TenantId() tenantId: string,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.ordersService.findAll(tenantId, paginationDto);
   }
 
   @Get(':id')

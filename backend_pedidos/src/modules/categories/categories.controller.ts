@@ -8,10 +8,12 @@ import {
   Param,
   ParseUUIDPipe,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 import { TenantId } from '../../common/decorators/tenant-id.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth/jwt-auth.guard';
 
@@ -20,8 +22,11 @@ export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Get()
-  findAll(@TenantId() tenantId: string) {
-    return this.categoriesService.findAll(tenantId);
+  findAll(
+    @TenantId() tenantId: string,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.categoriesService.findAll(tenantId, paginationDto);
   }
 
   @Get(':id')

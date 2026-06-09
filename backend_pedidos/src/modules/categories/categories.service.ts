@@ -8,6 +8,8 @@ import { Category } from './entities/category.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CategoryResponseDto } from './dto/category-response.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
+import { PaginatedResult } from '../../common/interfaces/paginated-result.interface';
 
 @Injectable()
 export class CategoriesService {
@@ -16,15 +18,24 @@ export class CategoriesService {
     private readonly categoryRepo: Repository<Category>,
   ) {}
 
-  async findAll(tenantId: string): Promise<CategoryResponseDto[]> {
-    const categories = await this.categoryRepo.find({
+  async findAll(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<CategoryResponseDto>> {
+    const { page = 1, limit = 10 } = pagination ?? {};
+    const [categories, total] = await this.categoryRepo.findAndCount({
       where: { tenantId },
+      skip: (page - 1) * limit,
+      take: limit,
       order: { name: 'ASC' },
     });
-    return categories.map((cat) => ({
-      id: cat.id,
-      name: cat.name,
-    }));
+    return {
+      data: categories.map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findOne(id: string, tenantId: string) {

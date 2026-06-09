@@ -8,10 +8,12 @@ import {
   Param,
   ParseUUIDPipe,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 import { TenantId } from '../../common/decorators/tenant-id.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth/jwt-auth.guard';
 
@@ -20,14 +22,20 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get()
-  findAll(@TenantId() tenantId: string) {
-    return this.productsService.findAll(tenantId);
+  findAll(
+    @TenantId() tenantId: string,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.productsService.findAll(tenantId, paginationDto);
   }
 
   @Get('admin')
   @UseGuards(JwtAuthGuard)
-  findAllAdmin(@TenantId() tenantId: string) {
-    return this.productsService.findAllAdmin(tenantId);
+  findAllAdmin(
+    @TenantId() tenantId: string,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.productsService.findAllAdmin(tenantId, paginationDto);
   }
 
   @Get(':id')

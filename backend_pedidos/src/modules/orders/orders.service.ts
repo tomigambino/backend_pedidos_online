@@ -13,6 +13,8 @@ import { ProductsService } from '../products/products.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { StatsResponseDto } from './dto/stats-response.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
+import { PaginatedResult } from '../../common/interfaces/paginated-result.interface';
 import { TERMINAL_STATES, VALID_TRANSITIONS } from './constants/order-transitions';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { OrderItem } from './entities/order-item.entity';
@@ -93,13 +95,22 @@ export class OrdersService {
     });
   }
 
-  async findAll(tenantId: string): Promise<OrderResponseDto[]> {
-    const orders = await this.orderRepo.find({
+  async findAll(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<OrderResponseDto>> {
+    const { page = 1, limit = 10 } = pagination ?? {};
+    const [orders, total] = await this.orderRepo.findAndCount({
       where: { tenantId },
       relations: { items: true, customer: true, delivery: true },
+      skip: (page - 1) * limit,
+      take: limit,
       order: { createdAt: 'DESC' },
     });
-    return orders.map(o => this.toResponse(o));
+    return {
+      data: orders.map(o => this.toResponse(o)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findOne(id: string, tenantId: string): Promise<OrderResponseDto> {
