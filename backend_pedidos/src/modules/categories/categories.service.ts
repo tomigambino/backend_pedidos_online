@@ -39,13 +39,7 @@ export class CategoriesService {
   }
 
   async findOne(id: string, tenantId: string) {
-    const category = await this.categoryRepo.findOne({
-      where: { id, tenantId },
-    });
-    if (!category) {
-      throw new NotFoundException('Categoría no encontrada');
-    }
-    return category;
+    return this.findOneOrFail(id, tenantId);
   }
 
   create(dto: CreateCategoryDto, tenantId: string) {
@@ -57,13 +51,23 @@ export class CategoriesService {
   }
 
   async update(id: string, dto: UpdateCategoryDto, tenantId: string) {
-    const category = await this.findOne(id, tenantId);
+    const category = await this.findOneOrFail(id, tenantId);
     this.categoryRepo.merge(category, { name: dto.name });
     return this.categoryRepo.save(category);
   }
 
   async remove(id: string, tenantId: string) {
-    const category = await this.findOne(id, tenantId);
+    const category = await this.findOneOrFail(id, tenantId);
     await this.categoryRepo.softRemove(category);
+  }
+
+  private async findOneOrFail(id: string, tenantId: string): Promise<Category> {
+    const category = await this.categoryRepo.findOne({
+      where: { id, tenantId },
+    });
+    if (!category) {
+      throw new NotFoundException('Categoría no encontrada');
+    }
+    return category;
   }
 }

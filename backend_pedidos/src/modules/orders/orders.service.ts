@@ -114,11 +114,9 @@ export class OrdersService {
   }
 
   async findOne(id: string, tenantId: string): Promise<OrderResponseDto> {
-    const order = await this.orderRepo.findOne({
-      where: { id, tenantId },
-      relations: { items: true, customer: true, delivery: true },
+    const order = await this.findOneOrFail(id, tenantId, {
+      items: true, customer: true, delivery: true,
     });
-    if (!order) throw new NotFoundException('Pedido no encontrado');
     return this.toResponse(order);
   }
 
@@ -137,8 +135,9 @@ export class OrdersService {
     newStatus: OrderStatus,
     cancellationReason?: string,
   ): Promise<OrderResponseDto> {
-    const order = await this.orderRepo.findOne({ where: { id, tenantId }, relations: { items: true, customer: true, delivery: true } });
-    if (!order) throw new NotFoundException('Pedido no encontrado');
+    const order = await this.findOneOrFail(id, tenantId, {
+      items: true, customer: true, delivery: true,
+    });
 
     const allowed = VALID_TRANSITIONS[order.status];
     if (!allowed.includes(newStatus)) {
@@ -163,11 +162,9 @@ export class OrdersService {
     id: string,
     tenantId: string,
   ): Promise<{ url: string; message: string }> {
-    const order = await this.orderRepo.findOne({
-      where: { id, tenantId },
-      relations: { customer: true },
+    const order = await this.findOneOrFail(id, tenantId, {
+      customer: true,
     });
-    if (!order) throw new NotFoundException('Pedido no encontrado');
 
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     const customerPhone = order.customer?.phone;
@@ -238,6 +235,19 @@ export class OrdersService {
     );
 
     return { ordersToday, revenueToday, pendingOrders };
+  }
+
+  private async findOneOrFail(
+    id: string,
+    tenantId: string,
+    relations: Record<string, boolean> = {},
+  ): Promise<Order> {
+    const order = await this.orderRepo.findOne({
+      where: { id, tenantId },
+      relations,
+    });
+    if (!order) throw new NotFoundException('Pedido no encontrado');
+    return order;
   }
 
   private toResponse(order: Order): OrderResponseDto {

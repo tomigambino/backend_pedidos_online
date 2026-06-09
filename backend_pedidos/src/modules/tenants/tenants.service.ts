@@ -86,8 +86,7 @@ export class TenantsService {
     dto: UpdateRegularScheduleDto,
     tenantId: string,
   ): Promise<RegularScheduleResponseDto> {
-    const schedule = await this.scheduleRepo.findOne({ where: { id, tenantId } });
-    if (!schedule) throw new NotFoundException('Horario no encontrado');
+    const schedule = await this.findScheduleOrFail(id, tenantId);
     if (dto.dayOfWeek !== undefined) schedule.dayOfWeek = dto.dayOfWeek;
     if (dto.openingTime !== undefined) schedule.openingTime = dto.openingTime;
     if (dto.closingTime !== undefined) schedule.closingTime = dto.closingTime;
@@ -96,8 +95,7 @@ export class TenantsService {
   }
 
   async deleteSchedule(id: string, tenantId: string): Promise<void> {
-    const schedule = await this.scheduleRepo.findOne({ where: { id, tenantId } });
-    if (!schedule) throw new NotFoundException('Horario no encontrado');
+    const schedule = await this.findScheduleOrFail(id, tenantId);
     await this.scheduleRepo.remove(schedule);
   }
 
@@ -129,8 +127,7 @@ export class TenantsService {
     dto: UpdateExceptionDto,
     tenantId: string,
   ): Promise<ExceptionResponseDto> {
-    const exception = await this.exceptionRepo.findOne({ where: { id, tenantId } });
-    if (!exception) throw new NotFoundException('Excepción no encontrada');
+    const exception = await this.findExceptionOrFail(id, tenantId);
     if (dto.date !== undefined) exception.date = dto.date;
     if (dto.isOpen !== undefined) {
       exception.isOpen = dto.isOpen;
@@ -143,8 +140,7 @@ export class TenantsService {
   }
 
   async deleteException(id: string, tenantId: string): Promise<void> {
-    const exception = await this.exceptionRepo.findOne({ where: { id, tenantId } });
-    if (!exception) throw new NotFoundException('Excepción no encontrada');
+    const exception = await this.findExceptionOrFail(id, tenantId);
     await this.exceptionRepo.remove(exception);
   }
 
@@ -152,6 +148,18 @@ export class TenantsService {
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
     return tenant;
+  }
+
+  private async findScheduleOrFail(id: string, tenantId: string): Promise<RegularSchedule> {
+    const schedule = await this.scheduleRepo.findOne({ where: { id, tenantId } });
+    if (!schedule) throw new NotFoundException('Horario no encontrado');
+    return schedule;
+  }
+
+  private async findExceptionOrFail(id: string, tenantId: string): Promise<AvailabilityException> {
+    const exception = await this.exceptionRepo.findOne({ where: { id, tenantId } });
+    if (!exception) throw new NotFoundException('Excepción no encontrada');
+    return exception;
   }
 
   private toScheduleResponse(schedule: RegularSchedule): RegularScheduleResponseDto {
