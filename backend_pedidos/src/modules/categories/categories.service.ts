@@ -5,6 +5,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from './entities/category.entity';
+import { Product } from '../products/entities/product.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CategoryResponseDto } from './dto/category-response.dto';
@@ -19,17 +20,47 @@ export class CategoriesService {
   ) {}
 
   async findAll(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<CategoryResponseDto>> {
+    return this.runFindAll(tenantId, pagination, true);
+  }
+
+  async findAllAdmin(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<CategoryResponseDto>> {
+    return this.runFindAll(tenantId, pagination, false);
+  }
+
+  private async runFindAll(
+    tenantId: string,
+    pagination: PaginationDto | undefined,
+    onlyActive: boolean,
+  ): Promise<PaginatedResult<CategoryResponseDto>> {
     const { page = 1, limit = 10 } = pagination ?? {};
-    const [categories, total] = await this.categoryRepo.findAndCount({
-      where: { tenantId },
-      skip: (page - 1) * limit,
-      take: limit,
-      order: { name: 'ASC' },
-    });
+
+    const joinCondition = `p.category_id = c.id AND p.deleted_at IS NULL${onlyActive ? ' AND p.is_active = true' : ''}`;
+
+    const queryBuilder = this.categoryRepo.createQueryBuilder('c')
+      .leftJoin(Product, 'p', joinCondition)
+      .where('c.tenant_id = :tenantId', { tenantId })
+      .andWhere('c.deleted_at IS NULL')
+      .select([
+        'c.id AS id',
+        'c.name AS name',
+        'COUNT(p.id) AS product_count',
+      ])
+      .groupBy('c.id')
+      .addGroupBy('c.name')
+      .orderBy('c.name', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [rawData, total] = await Promise.all([
+      queryBuilder.getRawMany(),
+      this.categoryRepo.count({ where: { tenantId } }),
+    ]);
+
     return {
-      data: categories.map((cat) => ({
-        id: cat.id,
-        name: cat.name,
+      data: rawData.map(item => ({
+        id: item.id,
+        name: item.name,
+        productCount: Number(item.product_count),
       })),
       total,
       page,

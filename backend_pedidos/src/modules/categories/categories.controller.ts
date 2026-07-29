@@ -29,6 +29,15 @@ export class CategoriesController {
     return this.categoriesService.findAll(tenantId, paginationDto);
   }
 
+  @Get('admin')
+  @UseGuards(JwtAuthGuard)
+  findAllAdmin(
+    @TenantId() tenantId: string,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.categoriesService.findAllAdmin(tenantId, paginationDto);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   findOne(
