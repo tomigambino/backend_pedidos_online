@@ -186,15 +186,15 @@ PENDIENTE ──→ EN_PREPARACION ──→ LISTO ──→ ENTREGADO ✓
 
 | Módulo | Ruta | Entidades incluidas | Estado |
 |---|---|---|---|
-| Auth | `src/modules/auth/` | `User` | ⬜ Pendiente |
-| Tenants | `src/modules/tenants/` | `Tenant`, `HorarioRegular`, `ExcepcionDisponibilidad` | ⬜ Pendiente |
-| Categories | `src/modules/categories/` | `Category` | ⬜ Pendiente |
-| Products | `src/modules/products/` | `Product` | ⬜ Pendiente |
-| Orders | `src/modules/orders/` | `Order` | ⬜ Pendiente |
-| Order Items | `src/modules/order-items/` | `OrderItem` | ⬜ Pendiente |
-| Customers | `src/modules/customers/` | `Customer` | ⬜ Pendiente |
-| Deliveries | `src/modules/deliveries/` | `Delivery` | ⬜ Pendiente |
-| Core / Tenant MW | `src/core/tenant/` | — | ⬜ Pendiente |
+| Auth | `src/modules/auth/` | `User` | ✅ Listo |
+| Tenants | `src/modules/tenants/` | `Tenant`, `HorarioRegular`, `ExcepcionDisponibilidad` | ✅ Listo |
+| Categories | `src/modules/categories/` | `Category` | ✅ Listo |
+| Products | `src/modules/products/` | `Product` | ✅ Listo |
+| Orders | `src/modules/orders/` | `Order` | ✅ Listo |
+| Order Items | `src/modules/order-items/` | `OrderItem` | ✅ Listo |
+| Customers | `src/modules/customers/` | `Customer` | ✅ Listo |
+| Deliveries | `src/modules/deliveries/` | `Delivery` | ✅ Listo |
+| Core / Tenant MW | `src/core/tenant/` | — | ✅ Listo |
 
 **Notas de agrupación:**
 - `HorarioRegular` y `ExcepcionDisponibilidad` viven dentro de `tenants/` porque son configuración del negocio, no entidades de dominio independientes.

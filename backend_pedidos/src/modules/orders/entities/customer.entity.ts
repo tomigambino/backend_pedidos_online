@@ -12,8 +12,8 @@ export class Customer {
   @Column()
   name: string;
 
-  @Column({ type: 'varchar', nullable: true })
-  phone: string | null;
+  @Column({ type: 'varchar' })
+  phone: string;
 
   @Column({ type: 'varchar', nullable: true })
   address: string | null;

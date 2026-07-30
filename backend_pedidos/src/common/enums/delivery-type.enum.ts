@@ -1,0 +1,4 @@
+export enum DeliveryType {
+  RETIRO_LOCAL = 'RETIRO_LOCAL',
+  ENVIO_DOMICILIO = 'ENVIO_DOMICILIO',
+}

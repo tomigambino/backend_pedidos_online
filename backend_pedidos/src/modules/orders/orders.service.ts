@@ -17,6 +17,7 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 import { PaginatedResult } from '../../common/interfaces/paginated-result.interface';
 import { TERMINAL_STATES, VALID_TRANSITIONS } from './constants/order-transitions';
 import { OrderStatus } from '../../common/enums/order-status.enum';
+import { DeliveryType } from '../../common/enums/delivery-type.enum';
 import { OrderItem } from './entities/order-item.entity';
 import { Customer } from './entities/customer.entity';
 import { OrdersSseService } from './orders-sse.service';
@@ -56,18 +57,14 @@ export class OrdersService {
 
       const customer = new Customer();
       customer.name = dto.customer.name;
-      customer.phone = dto.customer.phone ?? null;
+      customer.phone = dto.customer.phone;
       customer.address = dto.customer.address ?? null;
 
       let delivery: Delivery | null = null;
-      if (!dto.storePickup) {
-        if (!dto.delivery) {
-          throw new BadRequestException('Delivery requerido cuando no es retiro en tienda');
-        }
+      if (dto.deliveryType === DeliveryType.ENVIO_DOMICILIO) {
         delivery = new Delivery();
-        delivery.address = dto.delivery.address;
-        delivery.notes = dto.delivery.notes ?? null;
-        // Snapshot del costo del tenant al momento del pedido
+        delivery.address = dto.address!;
+        delivery.notes = dto.deliveryNotes ?? null;
         delivery.deliveryFee = tenant.deliveryCostEnabled
           ? Number(tenant.deliveryCost)
           : null;
@@ -85,10 +82,11 @@ export class OrdersService {
       order.cancellationReason = null;
       order.total = total;
       order.paymentMethod = dto.paymentMethod;
-      order.storePickup = dto.storePickup;
+      order.deliveryType = dto.deliveryType;
       order.customer = customer;
       order.delivery = delivery;
       order.items = items;
+      order.notes = dto.notes ?? null;
 
       const saved = await manager.getRepository(Order).save(order);
       return this.toResponse(saved);
@@ -259,11 +257,12 @@ export class OrdersService {
       cancellationReason: order.cancellationReason ?? null,
       total: Number(order.total),
       paymentMethod: order.paymentMethod,
-      storePickup: order.storePickup,
+      deliveryType: order.deliveryType,
+      notes: order.notes ?? null,
       customer: {
         id: order.customer?.id,
         name: order.customer?.name,
-        phone: order.customer?.phone ?? null,
+        phone: order.customer.phone,
         address: order.customer?.address ?? null,
       },
       delivery: order.delivery ? {

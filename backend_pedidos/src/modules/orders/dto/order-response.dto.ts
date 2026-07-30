@@ -1,5 +1,6 @@
 import { OrderStatus } from '../../../common/enums/order-status.enum';
 import { PaymentMethod } from '../../../common/enums/payment-method.enum';
+import { DeliveryType } from '../../../common/enums/delivery-type.enum';
 import { CustomerResponseDto } from './customer-response.dto';
 import { DeliveryResponseDto } from './delivery-response.dto';
 import { OrderItemResponseDto } from './order-item-response.dto';
@@ -12,7 +13,8 @@ export class OrderResponseDto {
   cancellationReason: string | null;
   total: number;
   paymentMethod: PaymentMethod;
-  storePickup: boolean;
+  deliveryType: DeliveryType;
+  notes: string | null;
   customer: CustomerResponseDto;
   delivery: DeliveryResponseDto | null;
   items: OrderItemResponseDto[];

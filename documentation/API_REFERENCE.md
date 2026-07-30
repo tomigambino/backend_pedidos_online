@@ -288,15 +288,13 @@ Crea un pedido. **No requiere JWT.**
   ],
   "customer": {
     "name": "Juan Pérez",
-    "phone": "1155551234",
-    "address": "Calle Falsa 123"
+    "phone": "1155551234"
   },
   "paymentMethod": "EFECTIVO",
-  "storePickup": false,
-  "delivery": {
-    "address": "Calle Falsa 123",
-    "notes": "Dejar en recepción"
-  }
+  "deliveryType": "ENVIO_DOMICILIO",
+  "address": "Calle Falsa 123",
+  "notes": "Sin cebolla, por favor",
+  "deliveryNotes": "Dejar en recepción"
 }
 ```
 
@@ -306,13 +304,13 @@ Crea un pedido. **No requiere JWT.**
 | `items[].productId` | string (UUID) | sí |
 | `items[].quantity` | number (≥1) | sí |
 | `customer.name` | string (≤120) | sí |
-| `customer.phone` | string (≤50) | no |
+| `customer.phone` | string (≤50) | sí |
 | `customer.address` | string (≤200) | no |
-| `paymentMethod` | `EFECTIVO` / `TRANSFERENCIA` | sí |
-| `storePickup` | boolean | sí |
-| `delivery` | object | no (obligatorio si `storePickup: false`) |
-| `delivery.address` | string (≤200) | sí |
-| `delivery.notes` | string (≤300) | no |
+| `paymentMethod` | `EFECTIVO` / `TRANSFERENCIA` / `TARJETA_DEBITO` | sí |
+| `deliveryType` | `RETIRO_LOCAL` / `ENVIO_DOMICILIO` | sí |
+| `address` | string (≤200) | solo si `deliveryType: ENVIO_DOMICILIO` |
+| `notes` | string (≤300) | no — nota general del pedido |
+| `deliveryNotes` | string (≤300) | no — nota específica del envío |
 
 **Respuesta:** `201 Created` — `OrderResponseDto` (ver [Modelos](#modelos-de-datos)).
 
@@ -566,6 +564,13 @@ Hello World!
 |-------|
 | `EFECTIVO` |
 | `TRANSFERENCIA` |
+| `TARJETA_DEBITO` |
+
+#### `DeliveryType`
+| Valor |
+|-------|
+| `RETIRO_LOCAL` |
+| `ENVIO_DOMICILIO` |
 
 ---
 
@@ -581,12 +586,13 @@ Hello World!
   "cancellationReason": null,
   "total": 3000,
   "paymentMethod": "EFECTIVO",
-  "storePickup": true,
+  "deliveryType": "RETIRO_LOCAL",
+  "notes": null,
   "customer": {
     "id": "uuid",
     "name": "Juan Pérez",
     "phone": "1155551234",
-    "address": "Calle Falsa 123"
+    "address": null
   },
   "delivery": null,
   "items": [

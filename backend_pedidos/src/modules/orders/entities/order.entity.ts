@@ -16,6 +16,7 @@ import { Delivery } from './delivery.entity';
 import { OrderItem } from './order-item.entity';
 import { OrderStatus } from '../../../common/enums/order-status.enum';
 import { PaymentMethod } from '../../../common/enums/payment-method.enum';
+import { DeliveryType } from '../../../common/enums/delivery-type.enum';
 
 @Entity('orders')
 export class Order {
@@ -45,8 +46,8 @@ export class Order {
   @Column({ type: 'enum', enum: PaymentMethod })
   paymentMethod: PaymentMethod;
 
-  @Column({ name: 'store_pickup' })
-  storePickup: boolean;
+  @Column({ type: 'enum', enum: DeliveryType, name: 'delivery_type' })
+  deliveryType: DeliveryType;
 
   @OneToOne(() => Customer, { cascade: true })
   @JoinColumn({ name: 'customer_id' })
@@ -61,6 +62,9 @@ export class Order {
 
   @Column({ name: 'delivery_id', nullable: true })
   deliveryId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  notes: string | null;
 
   @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
   items: OrderItem[];

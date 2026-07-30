@@ -1,6 +1,6 @@
 export class CustomerResponseDto {
   id: string;
   name: string;
-  phone: string | null;
+  phone: string;
   address: string | null;
 }

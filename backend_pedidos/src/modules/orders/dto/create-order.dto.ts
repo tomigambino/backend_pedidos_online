@@ -1,17 +1,19 @@
 import {
   IsArray,
-  IsBoolean,
   IsEnum,
   IsNotEmpty,
   IsOptional,
+  IsString,
+  MaxLength,
+  ValidateIf,
   ValidateNested,
   ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PaymentMethod } from '../../../common/enums/payment-method.enum';
+import { DeliveryType } from '../../../common/enums/delivery-type.enum';
 import { CreateOrderItemDto } from './create-order-item.dto';
 import { CreateCustomerDto } from './create-customer.dto';
-import { CreateDeliveryDto } from './create-delivery.dto';
 
 export class CreateOrderDto {
   @IsArray()
@@ -27,11 +29,23 @@ export class CreateOrderDto {
   @IsEnum(PaymentMethod)
   paymentMethod: PaymentMethod;
 
-  @IsBoolean()
-  storePickup: boolean;
+  @IsEnum(DeliveryType)
+  deliveryType: DeliveryType;
 
-  @ValidateNested()
-  @Type(() => CreateDeliveryDto)
+  @ValidateIf(o => o.deliveryType === DeliveryType.ENVIO_DOMICILIO)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  address?: string;
+
   @IsOptional()
-  delivery?: CreateDeliveryDto;
+  @IsString()
+  @MaxLength(300)
+  notes?: string;
+
+  @ValidateIf(o => o.deliveryType === DeliveryType.ENVIO_DOMICILIO)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  deliveryNotes?: string;
 }
