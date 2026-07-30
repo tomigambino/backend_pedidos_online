@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   ValidateIf,
   ValidateNested,
@@ -36,6 +37,9 @@ export class CreateOrderDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)
+  @Matches(/[a-zA-Z]/, {
+    message: 'La dirección debe incluir el nombre de la calle, no solo números',
+  })
   address?: string;
 
   @IsOptional()
