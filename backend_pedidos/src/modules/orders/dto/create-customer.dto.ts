@@ -4,6 +4,9 @@ export class CreateCustomerDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
+  @Matches(/^[a-zA-ZÀ-ÿñÑ\s']{2,}$/, {
+    message: 'El nombre solo puede contener letras, espacios y apóstrofes',
+  })
   name: string;
 
   @IsString()

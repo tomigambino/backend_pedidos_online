@@ -18,6 +18,7 @@ import { PaginatedResult } from '../../common/interfaces/paginated-result.interf
 import { TERMINAL_STATES, VALID_TRANSITIONS } from './constants/order-transitions';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { DeliveryType } from '../../common/enums/delivery-type.enum';
+import { PaymentMethod } from '../../common/enums/payment-method.enum';
 import { OrderItem } from './entities/order-item.entity';
 import { Customer } from './entities/customer.entity';
 import { OrdersSseService } from './orders-sse.service';
@@ -39,6 +40,15 @@ export class OrdersService {
   async create(dto: CreateOrderDto, tenantId: string): Promise<OrderResponseDto> {
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
+
+    if (
+      dto.deliveryType === DeliveryType.ENVIO_DOMICILIO &&
+      dto.paymentMethod === PaymentMethod.TARJETA_DEBITO
+    ) {
+      throw new BadRequestException(
+        'No se puede pagar con tarjeta de débito en envío a domicilio. Elegí efectivo o transferencia.',
+      );
+    }
 
     return this.dataSource.transaction(async manager => {
       // Snapshot de productos
