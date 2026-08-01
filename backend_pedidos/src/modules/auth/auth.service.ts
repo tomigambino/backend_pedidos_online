@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { User } from './entities/user.entity';
@@ -24,42 +24,56 @@ export class AuthService {
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
     private readonly jwtService: JwtService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async register(dto: RegisterDto) {
-    const existingUser = await this.userRepo.findOne({
-      where: { email: dto.email },
-    });
-    if (existingUser) {
-      throw new BadRequestException('Email ya registrado');
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const existingUser = await queryRunner.manager.findOne(User, {
+        where: { email: dto.email },
+      });
+      if (existingUser) {
+        throw new BadRequestException('Email ya registrado');
+      }
+
+      const existingTenant = await queryRunner.manager.findOne(Tenant, {
+        where: { slug: dto.tenantSlug },
+      });
+      if (existingTenant) {
+        throw new BadRequestException('Slug de negocio no disponible');
+      }
+
+      const tenant = queryRunner.manager.create(Tenant, {
+        name: dto.tenantName,
+        slug: dto.tenantSlug,
+      });
+      const savedTenant = await queryRunner.manager.save(tenant);
+
+      const passwordHash = await bcrypt.hash(dto.password, 10);
+      const user = queryRunner.manager.create(User, {
+        email: dto.email,
+        password: passwordHash,
+        role: UserRole.OWNER,
+        tenantId: savedTenant.id,
+      });
+      const savedUser = await queryRunner.manager.save(user);
+
+      await queryRunner.commitTransaction();
+
+      const payload = { userId: savedUser.id, tenantId: savedTenant.id };
+      return {
+        accessToken: this.jwtService.sign(payload),
+      };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
     }
-
-    const existingTenant = await this.tenantRepo.findOne({
-      where: { slug: dto.tenantSlug },
-    });
-    if (existingTenant) {
-      throw new BadRequestException('Slug de negocio no disponible');
-    }
-
-    const tenant = this.tenantRepo.create({
-      name: dto.tenantName,
-      slug: dto.tenantSlug,
-    });
-    const savedTenant = await this.tenantRepo.save(tenant);
-
-    const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = this.userRepo.create({
-      email: dto.email,
-      password: passwordHash,
-      role: UserRole.OWNER,
-      tenantId: savedTenant.id,
-    });
-    const savedUser = await this.userRepo.save(user);
-
-    const payload = { userId: savedUser.id, tenantId: savedTenant.id };
-    return {
-      accessToken: this.jwtService.sign(payload),
-    };
   }
 
   async login(dto: LoginDto, tenantId: string) {
