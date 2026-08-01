@@ -72,10 +72,14 @@ export class ProductsService {
 
   async update(id: string, dto: UpdateProductDto, tenantId: string): Promise<ProductResponseDto> {
     const product = await this.findOneOrFail(id, tenantId);
-    if (dto.categoryId) {
+    if (dto.categoryId !== undefined) {
       await this.validateCategory(dto.categoryId, tenantId);
     }
-    this.productRepo.merge(product, dto);
+    if (dto.name !== undefined) product.name = dto.name;
+    if (dto.description !== undefined) product.description = dto.description;
+    if (dto.price !== undefined) product.price = dto.price;
+    if (dto.categoryId !== undefined) product.categoryId = dto.categoryId;
+    if (dto.imageUrl !== undefined) product.imageUrl = dto.imageUrl;
     const saved = await this.productRepo.save(product);
     return this.toResponse(saved);
   }

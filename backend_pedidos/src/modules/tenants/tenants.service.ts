@@ -26,7 +26,21 @@ export class TenantsService {
 
   async update(dto: UpdateTenantDto, tenantId: string): Promise<Tenant> {
     const tenant = await this.findOneOrFail(tenantId);
-    this.tenantRepo.merge(tenant, dto);
+    if (dto.name !== undefined) tenant.name = dto.name;
+    if (dto.logo !== undefined) tenant.logo = dto.logo;
+    if (dto.banner !== undefined) tenant.banner = dto.banner;
+    if (dto.primaryColor !== undefined) tenant.primaryColor = dto.primaryColor;
+    if (dto.secondaryColor !== undefined) tenant.secondaryColor = dto.secondaryColor;
+    if (dto.description !== undefined) tenant.description = dto.description;
+    if (dto.whatsapp !== undefined) tenant.whatsapp = dto.whatsapp;
+    if (dto.address !== undefined) tenant.address = dto.address;
+    if (dto.cbu !== undefined) tenant.cbu = dto.cbu;
+    if (dto.alias !== undefined) tenant.alias = dto.alias;
+    if (dto.accountHolder !== undefined) tenant.accountHolder = dto.accountHolder;
+    if (dto.bank !== undefined) tenant.bank = dto.bank;
+    if (dto.isOpen !== undefined) tenant.isOpen = dto.isOpen;
+    if (dto.deliveryCostEnabled !== undefined) tenant.deliveryCostEnabled = dto.deliveryCostEnabled;
+    if (dto.deliveryCost !== undefined) tenant.deliveryCost = dto.deliveryCost;
     return this.tenantRepo.save(tenant);
   }
 

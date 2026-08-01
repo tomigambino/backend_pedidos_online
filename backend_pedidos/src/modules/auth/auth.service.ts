@@ -13,6 +13,9 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UserRole } from '../../common/enums/user-role.enum';
 
+const DUMMY_HASH =
+  '$2b$10$OKpvlxHkCkKqe7GvvuNakug7G9UPV9PithgjB7PXtmkrwtOf1c6Xm';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -63,10 +66,14 @@ export class AuthService {
     const user = await this.userRepo.findOne({
       where: { email: dto.email, tenantId },
     });
-    if (!user) throw new UnauthorizedException('Credenciales inválidas');
 
-    const isValid = await bcrypt.compare(dto.password, user.password);
-    if (!isValid) throw new UnauthorizedException('Credenciales inválidas');
+    const isValid = await bcrypt.compare(
+      dto.password,
+      user?.password ?? DUMMY_HASH,
+    );
+    if (!user || !isValid) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
 
     const payload = { userId: user.id, tenantId: user.tenantId };
     return { accessToken: this.jwtService.sign(payload) };
