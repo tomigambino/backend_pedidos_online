@@ -4,7 +4,6 @@ import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { TenantId } from '../../common/decorators/tenant-id.decorator';
 
 @UseGuards(ThrottlerGuard)
 @Controller()
@@ -18,13 +17,12 @@ export class AuthController {
   }
 
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  @Post(':tenant/auth/login')
+  @Post('auth/login')
   async login(
     @Body() dto: LoginDto,
-    @TenantId() tenantId: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { accessToken } = await this.authService.login(dto, tenantId);
+    const { accessToken } = await this.authService.login(dto);
     res.cookie('access_token', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
