@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -91,5 +92,19 @@ export class AuthService {
 
     const payload = { userId: user.id, tenantId: user.tenantId };
     return { accessToken: this.jwtService.sign(payload) };
+  }
+
+  async getMe(userId: string) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['tenant'],
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    return {
+      email: user.email,
+      tenantSlug: user.tenant.slug,
+      tenantName: user.tenant.name,
+    };
   }
 }

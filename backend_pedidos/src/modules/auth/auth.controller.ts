@@ -1,9 +1,12 @@
-import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
-import { Response } from 'express';
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { JwtAuthGuard } from './guards/jwt-auth/jwt-auth.guard';
+
+type AuthenticatedRequest = Request & { user: { userId: string } };
 
 @UseGuards(ThrottlerGuard)
 @Controller()
@@ -30,5 +33,11 @@ export class AuthController {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
     return { success: true };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('auth/me')
+  async me(@Req() req: AuthenticatedRequest) {
+    return this.authService.getMe(req.user.userId);
   }
 }
