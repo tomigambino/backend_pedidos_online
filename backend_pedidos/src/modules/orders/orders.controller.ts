@@ -15,7 +15,7 @@ import { Observable, concat, defer } from 'rxjs';
 import { map, takeWhile } from 'rxjs/operators';
 import { OrdersService } from './orders.service';
 import { OrdersSseService } from './orders-sse.service';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { FindOrdersQueryDto } from './dto/find-orders-query.dto';
 import { TenantId } from '../../common/decorators/tenant-id.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth/jwt-auth.guard';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -40,9 +40,18 @@ export class OrdersController {
   @UseGuards(JwtAuthGuard)
   findAll(
     @TenantId() tenantId: string,
-    @Query() paginationDto?: PaginationDto,
+    @Query() query?: FindOrdersQueryDto,
   ) {
-    return this.ordersService.findAll(tenantId, paginationDto);
+    return this.ordersService.findAll(tenantId, query ?? new FindOrdersQueryDto());
+  }
+
+  @Get('admin/counts')
+  @UseGuards(JwtAuthGuard)
+  getCounts(
+    @TenantId() tenantId: string,
+    @Query() query: FindOrdersQueryDto,
+  ) {
+    return this.ordersService.countByStatus(tenantId, query);
   }
 
   @Get(':id')

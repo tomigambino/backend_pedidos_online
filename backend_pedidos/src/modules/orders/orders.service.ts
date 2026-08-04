@@ -22,6 +22,7 @@ import { PaymentMethod } from '../../common/enums/payment-method.enum';
 import { OrderItem } from './entities/order-item.entity';
 import { Customer } from './entities/customer.entity';
 import { OrdersSseService } from './orders-sse.service';
+import { FindOrdersQueryDto } from './dto/find-orders-query.dto';
 
 @Injectable()
 export class OrdersService {
@@ -103,15 +104,39 @@ export class OrdersService {
     });
   }
 
-  async findAll(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<OrderResponseDto>> {
-    const { page = 1, limit = 10 } = pagination ?? {};
-    const [orders, total] = await this.orderRepo.findAndCount({
-      where: { tenantId },
-      relations: { items: true, customer: true, delivery: true },
-      skip: (page - 1) * limit,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+  async findAll(
+    tenantId: string,
+    query: FindOrdersQueryDto,
+  ): Promise<PaginatedResult<OrderResponseDto>> {
+    const { page = 1, limit = 10, status, search, dateFrom, dateTo } = query;
+
+    const qb = this.orderRepo
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.customer', 'customer')
+      .leftJoinAndSelect('order.items', 'items')
+      .leftJoinAndSelect('order.delivery', 'delivery')
+      .where('order.tenantId = :tenantId', { tenantId });
+
+    if (status) {
+      qb.andWhere('order.status = :status', { status });
+    }
+    if (search) {
+      qb.andWhere('customer.name ILIKE :search', { search: `%${search}%` });
+    }
+    if (dateFrom) {
+      qb.andWhere('order.createdAt >= :dateFrom', { dateFrom });
+    }
+    if (dateTo) {
+      const endOfDay = new Date(dateTo);
+      endOfDay.setHours(23, 59, 59, 999);
+      qb.andWhere('order.createdAt <= :dateTo', { dateTo: endOfDay });
+    }
+
+    qb.orderBy('order.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [orders, total] = await qb.getManyAndCount();
     return {
       data: orders.map(o => this.toResponse(o)),
       total,
@@ -119,6 +144,48 @@ export class OrdersService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  async countByStatus(
+    tenantId: string,
+    query: Omit<FindOrdersQueryDto, 'status' | 'page' | 'limit'>,
+  ): Promise<Record<OrderStatus, number>> {
+    const qb = this.orderRepo
+      .createQueryBuilder('order')
+      .leftJoin('order.customer', 'customer')
+      .select('order.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('order.tenantId = :tenantId', { tenantId });
+
+    if (query.search) {
+      qb.andWhere('customer.name ILIKE :search', {
+        search: `%${query.search}%`,
+      });
+    }
+    if (query.dateFrom) {
+      qb.andWhere('order.createdAt >= :dateFrom', {
+        dateFrom: query.dateFrom,
+      });
+    }
+    if (query.dateTo) {
+      const endOfDay = new Date(query.dateTo);
+      endOfDay.setHours(23, 59, 59, 999);
+      qb.andWhere('order.createdAt <= :dateTo', { dateTo: endOfDay });
+    }
+
+    qb.groupBy('order.status');
+
+    const rows = await qb.getRawMany();
+
+    const counts = Object.fromEntries(
+      Object.values(OrderStatus).map(s => [s, 0]),
+    ) as Record<OrderStatus, number>;
+
+    rows.forEach(r => {
+      counts[r.status as OrderStatus] = Number(r.count);
+    });
+
+    return counts;
   }
 
   async findOne(id: string, tenantId: string): Promise<OrderResponseDto> {
