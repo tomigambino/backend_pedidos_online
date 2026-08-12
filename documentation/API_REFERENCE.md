@@ -2,9 +2,10 @@
 
 **Framework:** NestJS 11 (Express)  
 **Base URL:** `http://localhost:3000` (configurable via `PORT` env)  
-**Auth:** JWT Bearer token — `Authorization: Bearer <token>`  
+**Auth:** JWT — via header `Authorization: Bearer <token>` o cookie HttpOnly `access_token`  
 **Rate Limiting Global:** 10 requests / 60s  
-**Multi-tenant:** Slug-based (`:tenant`) resuelto por `TenantMiddleware`
+**Multi-tenant:** Slug-based (`:tenant`) resuelto por `TenantMiddleware`  
+**Paginación:** Respuesta envolvente `{ data, total, page, limit, totalPages }`
 
 ---
 
@@ -45,13 +46,21 @@ Rate limit: **5 req/min**
 | `tenantName` | string | obligatorio |
 | `tenantSlug` | string | solo `a-z`, `0-9`, `-` |
 
-**Respuesta:** `201 Created` — objeto con JWT token.
+**Respuesta:** `201 Created` — JWT token en el body:
+
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+
+> El token expira en 7 días e incluye `userId` y `tenantId` en el payload.
 
 ---
 
-### `POST /:tenant/auth/login`
+### `POST /auth/login`
 
-Inicia sesión en un tenant específico.  
+Inicia sesión. **No requiere `:tenant`** (a diferencia del resto de las rutas).  
 Rate limit: **10 req/min**
 
 **Body:**
@@ -65,11 +74,28 @@ Rate limit: **10 req/min**
 **Respuesta:**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIs..."
+  "success": true
 }
 ```
 
-> El `access_token` expira en 7 días e incluye `userId` y `tenantId` en el payload.
+> Un token JWT expirado a los 7 días se guarda en una **cookie HttpOnly** `access_token`
+> (`httpOnly: true`, `sameSite: lax`, `secure` en producción). El JWT strategy valida el token
+> desde la cookie `access_token` **o** desde el header `Authorization: Bearer <token>`, indistintamente.
+
+---
+
+### `GET /auth/me` 🔒
+
+Devuelve la identidad del usuario autenticado. **No requiere `:tenant`.**
+
+**Respuesta:**
+```json
+{
+  "email": "user@example.com",
+  "tenantSlug": "mi-tienda",
+  "tenantName": "Mi Tienda"
+}
+```
 
 ---
 
@@ -77,7 +103,7 @@ Rate limit: **10 req/min**
 
 ### `GET /:tenant/categories` 🔓
 
-Lista todas las categorías (paginadas, ordenadas por nombre ASC).  
+Lista **solo categorías activas** (paginadas, ordenadas por nombre ASC).  
 **No requiere JWT.**
 
 | Query | Tipo | Default |
@@ -89,7 +115,7 @@ Lista todas las categorías (paginadas, ordenadas por nombre ASC).
 ```json
 {
   "data": [
-    { "id": "uuid", "name": "Bebidas", "productCount": 5 }
+    { "id": "uuid", "name": "Bebidas", "productCount": 5, "isActive": true }
   ],
   "total": 1,
   "page": 1,
@@ -98,11 +124,14 @@ Lista todas las categorías (paginadas, ordenadas por nombre ASC).
 }
 ```
 
+> - `productCount` cuenta **solo productos activos** dentro de la categoría.
+> - Las categorías ocultas (`isActive: false`) **no** aparecen en este listado público.
+
 ---
 
 ### `GET /:tenant/categories/admin` 🔒
 
-Lista **todas las categorías** (incluyendo el conteo total de productos, activos e inactivos).  
+Lista **todas las categorías** (activas e inactivas).  
 Requiere JWT.
 
 > **Atención:** Esta ruta debe declararse **antes** de `GET /:tenant/categories/:id` para evitar conflictos.
@@ -116,7 +145,7 @@ Requiere JWT.
 ```json
 {
   "data": [
-    { "id": "uuid", "name": "Bebidas", "productCount": 8 }
+    { "id": "uuid", "name": "Bebidas", "productCount": 8, "isActive": true }
   ],
   "total": 1,
   "page": 1,
@@ -124,6 +153,8 @@ Requiere JWT.
   "totalPages": 1
 }
 ```
+
+> `productCount` cuenta **todos** los productos (activos e inactivos). Sin filtro por `isActive` de categoría.
 
 ---
 
@@ -133,32 +164,50 @@ Obtiene una categoría por UUID.
 
 **Respuesta:**
 ```json
-{ "id": "uuid", "name": "Bebidas" }
+{ "id": "uuid", "name": "Bebidas", "isActive": true }
 ```
 
 ---
 
 ### `POST /:tenant/categories` 🔒
 
-Crea una categoría.
+Crea una categoría (nace con `isActive: true` por defecto).
 
 **Body:**
 ```json
 { "name": "Bebidas" }
 ```
 
-**Respuesta:** `201 Created` — `{ "id": "uuid", "name": "Bebidas" }`
+**Respuesta:** `201 Created`
 
 ---
 
 ### `PATCH /:tenant/categories/:id` 🔒
 
-Actualiza una categoría.
+Actualiza el nombre de una categoría.
 
 **Body:**
 ```json
 { "name": "Bebidas Frías" }
 ```
+
+**Respuesta:** categoría actualizada.
+
+---
+
+### `PATCH /:tenant/categories/:id/activate` 🔒
+
+Establece `isActive = true` en la categoría.
+
+**Respuesta:** categoría actualizada.
+
+---
+
+### `PATCH /:tenant/categories/:id/hide` 🔒
+
+Establece `isActive = false` en la categoría. La categoría deja de aparecer
+en `GET /:tenant/categories` (público) y sus productos desaparecen del menú público
+(a través del filtro por categoría visible en `GET /:tenant/products`).
 
 **Respuesta:** categoría actualizada.
 
@@ -176,8 +225,13 @@ Eliminación lógica (soft delete) de una categoría.
 
 ### `GET /:tenant/products` 🔓
 
-Lista **solo productos activos** (paginados).  
+Lista **solo productos activos de categorías activas** (paginados).  
 **No requiere JWT.**
+
+> Un producto desaparece del listado público si: está oculto (`isActive: false`), su categoría
+> está oculta (`category.isActive = false`) o su categoría está borrada (`category.deleted_at`).
+> Se usa `INNER JOIN` contra `categories`, así que un producto con categoría oculta/borrada
+> simplemente no se lista (y no cuenta en `total`).
 
 | Query | Tipo | Default |
 |-------|------|---------|
@@ -219,7 +273,18 @@ Lista **todos los productos** (incluyendo inactivos).
 
 Obtiene un producto por UUID.
 
----
+**Respuesta:**
+```json
+{
+  "id": "uuid",
+  "name": "Coca-Cola 500ml",
+  "description": "Bebida gaseosa",
+  "price": 1500,
+  "imageUrl": "https://...",
+  "isActive": true,
+  "categoryId": "uuid"
+}
+```
 
 ### `POST /:tenant/products` 🔒
 
@@ -320,10 +385,14 @@ Crea un pedido. **No requiere JWT.**
 
 Lista todos los pedidos (paginados, más recientes primero).
 
-| Query | Tipo | Default |
-|-------|------|---------|
-| `page` | number (≥1) | 1 |
-| `limit` | number (1–100) | 10 |
+| Query | Tipo | Descripción |
+|-------|------|-------------|
+| `page` | number (≥1) | default 1 |
+| `limit` | number (1–100) | default 10 |
+| `status` | `OrderStatus` | filtra por estado (opcional) |
+| `search` | string (≤120) | filtra por nombre de cliente (`ILIKE`) |
+| `dateFrom` | string (ISO date) | pedidos desde esa fecha |
+| `dateTo` | string (ISO date) | pedidos hasta esa fecha (fin de día inclusive) |
 
 **Respuesta:**
 ```json
@@ -333,6 +402,25 @@ Lista todos los pedidos (paginados, más recientes primero).
   "page": 1,
   "limit": 10,
   "totalPages": 1
+}
+```
+
+---
+
+### `GET /:tenant/orders/admin/counts` 🔒
+
+Cuenta pedidos agrupados por estado, aplicando los mismos filtros opcionales
+(`search`, `dateFrom`, `dateTo`) que `GET /:tenant/orders` (sin `status`, `page` ni `limit`).
+
+**Respuesta:** objeto con un contador por cada estado de `OrderStatus` (los estados sin pedidos valen `0`):
+```json
+{
+  "PENDIENTE": 2,
+  "EN_PREPARACION": 0,
+  "LISTO": 1,
+  "ENTREGADO": 5,
+  "CANCELADO": 1,
+  "NO_RETIRADO": 0
 }
 ```
 
@@ -395,9 +483,12 @@ Genera un enlace de WhatsApp con el resumen del pedido para notificar al cliente
 **Respuesta:**
 ```json
 {
-  "whatsappLink": "https://wa.me/541155551234?text=..."
+  "url": "https://wa.me/541155551234?text=...",
+  "message": "¡Hola! Tu pedido en el local está pendiente. Seguilo acá: https://tuapp.com/mi-tienda/pedido/<trackingUuid>"
 }
 ```
+
+> Devuelve tanto el `url` como el `message` (enlace armado y texto sin codificar).
 
 ---
 
@@ -624,7 +715,7 @@ Hello World!
 
 #### `CategoryResponseDto`
 ```json
-{ "id": "uuid", "name": "Bebidas", "productCount": 5 }
+{ "id": "uuid", "name": "Bebidas", "productCount": 5, "isActive": true }
 ```
 
 > `productCount` depende del endpoint: público (`GET /:tenant/categories`) cuenta solo productos activos; admin (`GET /:tenant/categories/admin`) cuenta todos los productos (incluyendo inactivos).
@@ -708,8 +799,8 @@ Todos los endpoints `GET` que devuelven listas aceptan los mismos parámetros de
 
 ## Consideraciones Generales
 
-- **Multi-tenant:** Todas las rutas (excepto `/` y `POST /auth/register`) incluyen `:tenant` (slug) en la URL, que el middleware resuelve automáticamente al `tenantId` correspondiente.
-- **Autenticación:** Las rutas marcadas con 🔒 requieren JWT en el header `Authorization: Bearer <token>`. El token se obtiene de `POST /:tenant/auth/login`.
-- **Rate limiting:** Global 10 req/60s. Login: 5 req/min. Register: 10 req/min.
-- **CORS:** Configurable vía `CORS_ORIGIN` (default `*`).
-- **Soft delete:** Categorías y productos usan soft delete (`deleted_at`). No se retornan en listados públicos.
+- **Multi-tenant:** Todas las rutas incluyen `:tenant` (slug) en la URL, que el middleware resuelve al `tenantId` correspondiente. **Excepciones:** `GET /`, `POST /auth/register`, `POST /auth/login` y `GET /auth/me` (autenticación no está scoped a un tenant).
+- **Autenticación:** Las rutas marcadas con 🔒 requieren un JWT. El token se puede enviar vía header `Authorization: Bearer <token>` **o** como cookie HttpOnly `access_token` (la estrategia JWT busca en ambas). Se obtiene de `POST /auth/login` (setea la cookie) o de `POST /auth/register` (devuelve el `accessToken`).
+- **Rate limiting:** Global 10 req/60s. `POST /auth/register`: 5 req/min. `POST /auth/login`: 10 req/min.
+- **CORS:** `origin` configurable vía `CORS_ORIGIN` (default `*`), `credentials: true`, métodos `GET/POST/PATCH/DELETE`.
+- **Soft delete e isActive:** Categorías y productos usan soft delete (`deleted_at`). Además, `isActive` oculta de forma independiente. El listado público de productos oculta los de categoría oculta/borrada; el listado público de categorías solo muestra las activas.

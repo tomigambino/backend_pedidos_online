@@ -20,12 +20,19 @@ export class ProductsService {
 
   async findAll(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<ProductResponseDto>> {
     const { page = 1, limit = 10 } = pagination ?? {};
-    const [products, total] = await this.productRepo.findAndCount({
-      where: { tenantId, isActive: true },
-      skip: (page - 1) * limit,
-      take: limit,
-      order: { name: 'ASC' },
-    });
+
+    const [products, total] = await this.productRepo
+      .createQueryBuilder('product')
+      .innerJoin('product.category', 'category')
+      .where('product.tenantId = :tenantId', { tenantId })
+      .andWhere('product.isActive = true')
+      .andWhere('category.isActive = true')
+      .andWhere('category.deletedAt IS NULL')
+      .orderBy('product.name', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
     return {
       data: products.map(p => this.toResponse(p)),
       total,

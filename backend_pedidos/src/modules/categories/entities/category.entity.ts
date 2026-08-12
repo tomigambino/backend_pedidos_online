@@ -33,6 +33,9 @@ export class Category {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
+  @Column({ name: 'is_active', default: true })
+  isActive: boolean;
+
   @DeleteDateColumn({ name: 'deleted_at', nullable: true })
   deletedAt: Date | null;
 }

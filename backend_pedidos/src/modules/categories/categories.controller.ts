@@ -74,4 +74,22 @@ export class CategoriesController {
   ) {
     return this.categoriesService.remove(id, tenantId);
   }
+
+  @Patch(':id/activate')
+  @UseGuards(JwtAuthGuard)
+  activate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @TenantId() tenantId: string,
+  ) {
+    return this.categoriesService.activate(id, tenantId);
+  }
+
+  @Patch(':id/hide')
+  @UseGuards(JwtAuthGuard)
+  hide(
+    @Param('id', ParseUUIDPipe) id: string,
+    @TenantId() tenantId: string,
+  ) {
+    return this.categoriesService.hide(id, tenantId);
+  }
 }

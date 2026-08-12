@@ -40,9 +40,11 @@ export class CategoriesService {
       .leftJoin(Product, 'p', joinCondition)
       .where('c.tenant_id = :tenantId', { tenantId })
       .andWhere('c.deleted_at IS NULL')
+      .andWhere(onlyActive ? 'c.is_active = true' : '1 = 1')
       .select([
         'c.id AS id',
         'c.name AS name',
+        'c.is_active AS is_active',
         'COUNT(p.id) AS product_count',
       ])
       .groupBy('c.id')
@@ -61,6 +63,7 @@ export class CategoriesService {
         id: item.id,
         name: item.name,
         productCount: Number(item.product_count),
+        isActive: item.is_active,
       })),
       total,
       page,
@@ -90,6 +93,29 @@ export class CategoriesService {
   async remove(id: string, tenantId: string) {
     const category = await this.findOneOrFail(id, tenantId);
     await this.categoryRepo.softRemove(category);
+  }
+
+  async activate(id: string, tenantId: string): Promise<CategoryResponseDto> {
+    const category = await this.findOneOrFail(id, tenantId);
+    category.isActive = true;
+    const saved = await this.categoryRepo.save(category);
+    return this.toResponse(saved);
+  }
+
+  async hide(id: string, tenantId: string): Promise<CategoryResponseDto> {
+    const category = await this.findOneOrFail(id, tenantId);
+    category.isActive = false;
+    const saved = await this.categoryRepo.save(category);
+    return this.toResponse(saved);
+  }
+
+  private toResponse(category: Category): CategoryResponseDto {
+    return {
+      id: category.id,
+      name: category.name,
+      productCount: 0,
+      isActive: category.isActive,
+    };
   }
 
   private async findOneOrFail(id: string, tenantId: string): Promise<Category> {
