@@ -46,15 +46,17 @@ Rate limit: **5 req/min**
 | `tenantName` | string | obligatorio |
 | `tenantSlug` | string | solo `a-z`, `0-9`, `-` |
 
-**Respuesta:** `201 Created` — JWT token en el body:
+**Respuesta:** `201 Created` — JWT token en cookie HttpOnly:
 
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIs..."
+  "success": true
 }
 ```
 
-> El token expira en 7 días e incluye `userId` y `tenantId` en el payload.
+> El token expira en 7 días e incluye `userId` y `tenantId` en el payload. Se guarda en una
+> cookie HttpOnly `access_token` con las mismas opciones que `login` (`httpOnly: true`,
+> `sameSite: lax`, `secure` en producción). El body ya no incluye el `accessToken`.
 
 ---
 
@@ -800,7 +802,7 @@ Todos los endpoints `GET` que devuelven listas aceptan los mismos parámetros de
 ## Consideraciones Generales
 
 - **Multi-tenant:** Todas las rutas incluyen `:tenant` (slug) en la URL, que el middleware resuelve al `tenantId` correspondiente. **Excepciones:** `GET /`, `POST /auth/register`, `POST /auth/login` y `GET /auth/me` (autenticación no está scoped a un tenant).
-- **Autenticación:** Las rutas marcadas con 🔒 requieren un JWT. El token se puede enviar vía header `Authorization: Bearer <token>` **o** como cookie HttpOnly `access_token` (la estrategia JWT busca en ambas). Se obtiene de `POST /auth/login` (setea la cookie) o de `POST /auth/register` (devuelve el `accessToken`).
+- **Autenticación:** Las rutas marcadas con 🔒 requieren un JWT. El token se puede enviar vía header `Authorization: Bearer <token>` **o** como cookie HttpOnly `access_token` (la estrategia JWT busca en ambas). Se obtiene de `POST /auth/login` o `POST /auth/register` (ambos setean la cookie `access_token`).
 - **Rate limiting:** Global 10 req/60s. `POST /auth/register`: 5 req/min. `POST /auth/login`: 10 req/min.
 - **CORS:** `origin` configurable vía `CORS_ORIGIN` (default `*`), `credentials: true`, métodos `GET/POST/PATCH/DELETE`.
 - **Soft delete e isActive:** Categorías y productos usan soft delete (`deleted_at`). Además, `isActive` oculta de forma independiente. El listado público de productos oculta los de categoría oculta/borrada; el listado público de categorías solo muestra las activas.
