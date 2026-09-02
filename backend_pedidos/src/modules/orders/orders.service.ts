@@ -24,6 +24,8 @@ import { Customer } from './entities/customer.entity';
 import { OrdersSseService } from './orders-sse.service';
 import { FindOrdersQueryDto } from './dto/find-orders-query.dto';
 
+const AR_OFFSET = '-03:00';
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -124,12 +126,12 @@ export class OrdersService {
       qb.andWhere('customer.name ILIKE :search', { search: `%${search}%` });
     }
     if (dateFrom) {
-      qb.andWhere('order.createdAt >= :dateFrom', { dateFrom });
+      const start = new Date(`${dateFrom}T00:00:00${AR_OFFSET}`);
+      qb.andWhere('order.createdAt >= :start', { start });
     }
     if (dateTo) {
-      const endOfDay = new Date(dateTo);
-      endOfDay.setHours(23, 59, 59, 999);
-      qb.andWhere('order.createdAt <= :dateTo', { dateTo: endOfDay });
+      const end = new Date(`${dateTo}T23:59:59.999${AR_OFFSET}`);
+      qb.andWhere('order.createdAt <= :end', { end });
     }
 
     qb.orderBy('order.createdAt', 'DESC')
@@ -163,14 +165,12 @@ export class OrdersService {
       });
     }
     if (query.dateFrom) {
-      qb.andWhere('order.createdAt >= :dateFrom', {
-        dateFrom: query.dateFrom,
-      });
+      const start = new Date(`${query.dateFrom}T00:00:00${AR_OFFSET}`);
+      qb.andWhere('order.createdAt >= :start', { start });
     }
     if (query.dateTo) {
-      const endOfDay = new Date(query.dateTo);
-      endOfDay.setHours(23, 59, 59, 999);
-      qb.andWhere('order.createdAt <= :dateTo', { dateTo: endOfDay });
+      const end = new Date(`${query.dateTo}T23:59:59.999${AR_OFFSET}`);
+      qb.andWhere('order.createdAt <= :end', { end });
     }
 
     qb.groupBy('order.status');
@@ -283,10 +283,11 @@ export class OrdersService {
   }
 
   async getStats(tenantId: string): Promise<StatsResponseDto> {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
+    const todayStr = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+    });
+    const todayStart = new Date(`${todayStr}T00:00:00${AR_OFFSET}`);
+    const todayEnd = new Date(`${todayStr}T23:59:59.999${AR_OFFSET}`);
 
     const [ordersToday, pendingOrders, todayOrders] = await Promise.all([
       this.orderRepo.count({
