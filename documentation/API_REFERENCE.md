@@ -290,34 +290,37 @@ Obtiene un producto por UUID.
 
 ### `POST /:tenant/products` 🔒
 
-Crea un producto.
+Crea un producto.  
+**Content-Type:** `multipart/form-data`
 
-**Body:**
-```json
-{
-  "name": "Coca-Cola 500ml",
-  "description": "Bebida gaseosa",
-  "price": 1500,
-  "categoryId": "uuid-de-categoria",
-  "imageUrl": "https://..."
-}
-```
+> La imagen se sube como archivo (`FileInterceptor('image')`) a Cloudinary.
 
-| Campo | Tipo | Requerido |
-|-------|------|-----------|
-| `name` | string | sí |
-| `description` | string | no |
-| `price` | number (≥0) | sí |
-| `categoryId` | string (UUID) | sí |
-| `imageUrl` | string | no |
+| Campo | Tipo | Requerido | Notas |
+|-------|------|-----------|-------|
+| `name` | string | sí | |
+| `description` | string | no | |
+| `price` | number (≥0) | sí | |
+| `categoryId` | string (UUID) | sí | debe pertenecer al tenant |
+| `image` | file | no | imagen subida a Cloudinary |
+
+**Respuesta:** `201 Created` — `ProductResponseDto`
 
 ---
 
 ### `PATCH /:tenant/products/:id` 🔒
 
-Actualiza un producto (campos parciales).
+Actualiza un producto (campos parciales).  
+**Content-Type:** `multipart/form-data`
 
-**Body:** Mismos campos que `CreateProductDto`, todos opcionales.
+| Campo | Tipo | Requerido | Notas |
+|-------|------|-----------|-------|
+| `name` | string | no | |
+| `description` | string | no | |
+| `price` | number (≥0) | no | |
+| `categoryId` | string (UUID) | no | |
+| `image` | file | no | reemplaza imagen anterior en Cloudinary |
+
+**Respuesta:** producto actualizado (`ProductResponseDto`).
 
 ---
 
@@ -333,11 +336,15 @@ Eliminación lógica (soft delete).
 
 Establece `isActive = true`.
 
+**Respuesta:** producto actualizado (`ProductResponseDto`).
+
 ---
 
 ### `PATCH /:tenant/products/:id/hide` 🔒
 
 Establece `isActive = false`.
+
+**Respuesta:** producto actualizado (`ProductResponseDto`).
 
 ---
 
@@ -365,21 +372,26 @@ Crea un pedido. **No requiere JWT.**
 }
 ```
 
-| Campo | Tipo | Requerido |
-|-------|------|-----------|
-| `items` | array | sí (min 1) |
-| `items[].productId` | string (UUID) | sí |
-| `items[].quantity` | number (≥1) | sí |
-| `customer.name` | string (≤120) | sí |
-| `customer.phone` | string (≤50) | sí |
-| `customer.address` | string (≤200) | no |
-| `paymentMethod` | `EFECTIVO` / `TRANSFERENCIA` / `TARJETA_DEBITO` | sí |
-| `deliveryType` | `RETIRO_LOCAL` / `ENVIO_DOMICILIO` | sí |
-| `address` | string (≤200) | solo si `deliveryType: ENVIO_DOMICILIO` |
-| `notes` | string (≤300) | no — nota general del pedido |
-| `deliveryNotes` | string (≤300) | no — nota específica del envío |
+| Campo | Tipo | Requerido | Validación |
+|-------|------|-----------|------------|
+| `items` | array | sí (min 1) | |
+| `items[].productId` | string (UUID) | sí | producto activo del tenant |
+| `items[].quantity` | integer (≥1) | sí | |
+| `customer.name` | string | sí | ≤120, solo letras, espacios y apóstrofes (`/^[a-zA-ZÀ-ÿñÑ\s']{2,}$/`) |
+| `customer.phone` | string | sí | 6–20 chars, solo números, espacios, `+`, `-`, `()` (`/^[0-9+\-\s()]{6,20}$/`) |
+| `customer.address` | string | no | ≤200 |
+| `paymentMethod` | `EFECTIVO` / `TRANSFERENCIA` / `TARJETA_DEBITO` | sí | |
+| `deliveryType` | `RETIRO_LOCAL` / `ENVIO_DOMICILIO` | sí | |
+| `address` | string | solo si `deliveryType: ENVIO_DOMICILIO` | ≤200, debe contener al menos una letra |
+| `notes` | string | no | ≤300 — nota general del pedido |
+| `deliveryNotes` | string | no | ≤300 — solo para `ENVIO_DOMICILIO` |
 
-**Respuesta:** `201 Created` — `OrderResponseDto` (ver [Modelos](#modelos-de-datos)).
+**Reglas de negocio:**
+- No se permite pagar con `TARJETA_DEBITO` en envíos a domicilio (error 400).
+- Si `deliveryType = ENVIO_DOMICILIO`, se adjunta `deliveryFee` del tenant si `deliveryCostEnabled` está activo.
+- El `total` se calcula sumando `precio × cantidad` de cada producto al momento de la creación (snapshot).
+
+**Respuesta:** `201 Created` — `OrderResponseDto` (ver [Modelos](#orderresponsedto)).
 
 ---
 
@@ -395,6 +407,8 @@ Lista todos los pedidos (paginados, más recientes primero).
 | `search` | string (≤120) | filtra por nombre de cliente (`ILIKE`) |
 | `dateFrom` | string (ISO date) | pedidos desde esa fecha |
 | `dateTo` | string (ISO date) | pedidos hasta esa fecha (fin de día inclusive) |
+
+> Las fechas se interpretan en zona horaria Argentina (ART, UTC-3).
 
 **Respuesta:**
 ```json
@@ -430,7 +444,8 @@ Cuenta pedidos agrupados por estado, aplicando los mismos filtros opcionales
 
 ### `GET /:tenant/orders/admin/stats` 🔒
 
-Estadísticas del día.
+Estadísticas del día.  
+Los montos se calculan en zona horaria Argentina (ART, UTC-3). Los pedidos cancelados **no** se incluyen en `revenueToday`.
 
 **Respuesta:**
 ```json
@@ -446,6 +461,8 @@ Estadísticas del día.
 ### `GET /:tenant/orders/:id` 🔒
 
 Obtiene un pedido por su ID UUID.
+
+**Respuesta:** `OrderResponseDto`
 
 ---
 
@@ -467,6 +484,8 @@ Actualiza el estado de un pedido siguiendo la máquina de estados.
 | `cancellationReason` | string (≤255) | solo si status = `CANCELADO` |
 
 > Ver [máquina de estados](#máquina-de-estados-pedidos) para transiciones válidas.
+
+**Respuesta:** `OrderResponseDto` actualizado.
 
 ---
 
@@ -499,6 +518,11 @@ Genera un enlace de WhatsApp con el resumen del pedido para notificar al cliente
 Actualiza el teléfono del cliente asociado a un pedido (público, por trackingUuid).
 
 **Body:**
+```json
+{ "phone": "1155555678" }
+```
+
+**Respuesta:**
 ```json
 { "phone": "1155555678" }
 ```
@@ -554,28 +578,31 @@ Obtiene configuración pública del tenant (nombre, logo, colores, horarios, etc
 
 ### `PATCH /:tenant/admin/tenants` 🔒
 
-Actualiza la configuración del tenant.
+Actualiza la configuración del tenant.  
+**Content-Type:** `multipart/form-data`
 
-**Body (todos opcionales):**
-```json
-{
-  "name": "Mi Tienda",
-  "logo": "https://...",
-  "banner": "https://...",
-  "primaryColor": "#FF5733",
-  "secondaryColor": "#33FF57",
-  "description": "Nueva descripción",
-  "whatsapp": "541155551234",
-  "address": "Av. Siempre Viva 123",
-  "cbu": "0000003100000000000001",
-  "alias": "mi.tienda.mp",
-  "accountHolder": "Juan Pérez",
-  "bank": "Banco Ejemplo",
-  "isOpen": true,
-  "deliveryCostEnabled": false,
-  "deliveryCost": 0
-}
-```
+> Los campos de texto y los archivos se envían juntos en un solo request multipart.
+> Los campos de archivos (`logo`, `banner`) son opcionales. Se suben a Cloudinary.
+
+| Campo | Tipo | Requerido | Notas |
+|-------|------|-----------|-------|
+| `name` | string | no | nombre del negocio |
+| `primaryColor` | string | no | |
+| `secondaryColor` | string | no | |
+| `description` | string | no | |
+| `whatsapp` | string | no | |
+| `address` | string | no | |
+| `cbu` | string | no | |
+| `alias` | string | no | |
+| `accountHolder` | string | no | |
+| `bank` | string | no | |
+| `isOpen` | boolean | no | |
+| `deliveryCostEnabled` | boolean | no | |
+| `deliveryCost` | number (≥0) | no | |
+| `logo` | file | no | imagen subida a Cloudinary (max 1) |
+| `banner` | file | no | imagen subida a Cloudinary (max 1) |
+
+**Respuesta:** tenant actualizado (entera).
 
 ---
 
@@ -597,7 +624,7 @@ Crea un horario regular.
 | `closingTime` | string | formato `HH:MM` |
 
 #### `PATCH /:tenant/admin/schedule/:id` 🔒
-Actualiza un horario regular (mismos campos que creación).
+Actualiza un horario regular (mismos campos que creación, todos opcionales).
 
 #### `DELETE /:tenant/admin/schedule/:id` 🔒
 Elimina un horario regular. `204 No Content`
@@ -618,10 +645,19 @@ Crea una excepción.
   "reason": "Navidad"
 }
 ```
+
+| Campo | Tipo | Requerido | Notas |
+|-------|------|-----------|-------|
+| `date` | string (YYYY-MM-DD) | sí | |
+| `isOpen` | boolean | sí | |
+| `openingTime` | string (HH:MM) | solo si `isOpen: true` | |
+| `closingTime` | string (HH:MM) | solo si `isOpen: true` | |
+| `reason` | string | no | |
+
 Si `isOpen: true`, se requieren `openingTime` y `closingTime`.
 
 #### `PATCH /:tenant/admin/exceptions/:id` 🔒
-Actualiza una excepción.
+Actualiza una excepción (campos parciales).
 
 #### `DELETE /:tenant/admin/exceptions/:id` 🔒
 Elimina una excepción. `204 No Content`
@@ -665,6 +701,11 @@ Hello World!
 | `RETIRO_LOCAL` |
 | `ENVIO_DOMICILIO` |
 
+#### `UserRole`
+| Valor |
+|-------|
+| `OWNER` |
+
 ---
 
 ### DTOs de Respuesta
@@ -687,7 +728,12 @@ Hello World!
     "phone": "1155551234",
     "address": null
   },
-  "delivery": null,
+  "delivery": {
+    "id": "uuid",
+    "address": "Calle Falsa 123",
+    "notes": "Dejar en recepción",
+    "deliveryFee": 500
+  },
   "items": [
     {
       "id": "uuid",
@@ -702,6 +748,41 @@ Hello World!
 }
 ```
 
+> `delivery` es `null` cuando `deliveryType = RETIRO_LOCAL`.
+
+#### `CustomerResponseDto`
+```json
+{
+  "id": "uuid",
+  "name": "Juan Pérez",
+  "phone": "1155551234",
+  "address": null
+}
+```
+
+#### `DeliveryResponseDto`
+```json
+{
+  "id": "uuid",
+  "address": "Calle Falsa 123",
+  "notes": "Dejar en recepción",
+  "deliveryFee": 500
+}
+```
+
+> `deliveryFee` es el costo de envío del tenant al momento de la creación (`null` si `deliveryCostEnabled` estaba desactivado).
+
+#### `OrderItemResponseDto`
+```json
+{
+  "id": "uuid",
+  "productId": "uuid",
+  "name": "Coca-Cola 500ml",
+  "price": 1500,
+  "quantity": 2
+}
+```
+
 #### `ProductResponseDto`
 ```json
 {
@@ -709,7 +790,7 @@ Hello World!
   "name": "Coca-Cola 500ml",
   "description": "Bebida gaseosa",
   "price": 1500,
-  "imageUrl": null,
+  "imageUrl": "https://...",
   "isActive": true,
   "categoryId": "uuid"
 }
@@ -726,6 +807,8 @@ Hello World!
 ```json
 { "ordersToday": 5, "revenueToday": 12500, "pendingOrders": 2 }
 ```
+
+> `revenueToday` suma el `total` de pedidos del día **excepto** los cancelados. Calculado en zona horaria Argentina (ART, UTC-3).
 
 #### `TenantConfigResponseDto`
 ```json
@@ -805,4 +888,7 @@ Todos los endpoints `GET` que devuelven listas aceptan los mismos parámetros de
 - **Autenticación:** Las rutas marcadas con 🔒 requieren un JWT. El token se puede enviar vía header `Authorization: Bearer <token>` **o** como cookie HttpOnly `access_token` (la estrategia JWT busca en ambas). Se obtiene de `POST /auth/login` o `POST /auth/register` (ambos setean la cookie `access_token`).
 - **Rate limiting:** Global 10 req/60s. `POST /auth/register`: 5 req/min. `POST /auth/login`: 10 req/min.
 - **CORS:** `origin` configurable vía `CORS_ORIGIN` (default `*`), `credentials: true`, métodos `GET/POST/PATCH/DELETE`.
+- **Seguridad:** Helmet aplicado globalmente para headers de seguridad HTTP.
+- **Validación:** `ValidationPipe` global con `transform: true`, `whitelist: true`, `forbidNonWhitelisted: true`. Todos los bodies se transforman y validan automáticamente.
+- **Subida de imágenes:** Productos, logo y banner se suben a Cloudinary. Los endpoints de productos (`POST`, `PATCH`) y tenant (`PATCH`) aceptan `multipart/form-data` con los campos de archivo indicados.
 - **Soft delete e isActive:** Categorías y productos usan soft delete (`deleted_at`). Además, `isActive` oculta de forma independiente. El listado público de productos oculta los de categoría oculta/borrada; el listado público de categorías solo muestra las activas.
