@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { Category } from '../categories/entities/category.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
@@ -16,6 +18,9 @@ export class ProductsService {
     private readonly productRepo: Repository<Product>,
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async findAll(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<ProductResponseDto>> {
@@ -64,20 +69,30 @@ export class ProductsService {
     return this.toResponse(product);
   }
 
-  async create(dto: CreateProductDto, tenantId: string): Promise<ProductResponseDto> {
+  async create(
+    dto: CreateProductDto,
+    tenantId: string,
+    file?: Express.Multer.File,
+  ): Promise<ProductResponseDto> {
     await this.validateCategory(dto.categoryId, tenantId);
+    const imageUrl = await this.resolveImageUrl(tenantId, file);
     const product = new Product();
     product.name = dto.name;
     product.description = dto.description ?? null;
     product.price = dto.price;
     product.categoryId = dto.categoryId;
-    product.imageUrl = dto.imageUrl ?? null;
+    product.imageUrl = imageUrl ?? null;
     product.tenantId = tenantId;
     const saved = await this.productRepo.save(product);
     return this.toResponse(saved);
   }
 
-  async update(id: string, dto: UpdateProductDto, tenantId: string): Promise<ProductResponseDto> {
+  async update(
+    id: string,
+    dto: UpdateProductDto,
+    tenantId: string,
+    file?: Express.Multer.File,
+  ): Promise<ProductResponseDto> {
     const product = await this.findOneOrFail(id, tenantId);
     if (dto.categoryId !== undefined) {
       await this.validateCategory(dto.categoryId, tenantId);
@@ -86,7 +101,8 @@ export class ProductsService {
     if (dto.description !== undefined) product.description = dto.description;
     if (dto.price !== undefined) product.price = dto.price;
     if (dto.categoryId !== undefined) product.categoryId = dto.categoryId;
-    if (dto.imageUrl !== undefined) product.imageUrl = dto.imageUrl;
+    const imageUrl = await this.resolveImageUrl(tenantId, file);
+    if (imageUrl) product.imageUrl = imageUrl;
     const saved = await this.productRepo.save(product);
     return this.toResponse(saved);
   }
@@ -129,6 +145,19 @@ export class ProductsService {
     const product = await this.productRepo.findOne({ where: { id, tenantId } });
     if (!product) throw new NotFoundException('Producto no encontrado');
     return product;
+  }
+
+  private async resolveImageUrl(
+    tenantId: string,
+    file?: Express.Multer.File,
+  ): Promise<string | undefined> {
+    if (!file) return undefined;
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('Negocio no encontrado');
+    }
+    const folder = `pedilo/${tenant.slug}/products/`;
+    return this.cloudinaryService.uploadImage(file.buffer, folder);
   }
 
   private toResponse(product: Product): ProductResponseDto {

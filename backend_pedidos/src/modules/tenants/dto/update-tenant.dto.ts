@@ -5,19 +5,12 @@ import {
   IsNumber,
   Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class UpdateTenantDto {
   @IsString()
   @IsOptional()
   name?: string;
-
-  @IsString()
-  @IsOptional()
-  logo?: string;
-
-  @IsString()
-  @IsOptional()
-  banner?: string;
 
   @IsString()
   @IsOptional()
@@ -55,14 +48,17 @@ export class UpdateTenantDto {
   @IsOptional()
   bank?: string;
 
+  @Type(() => Boolean)
   @IsBoolean()
   @IsOptional()
   isOpen?: boolean;
 
+  @Type(() => Boolean)
   @IsBoolean()
   @IsOptional()
   deliveryCostEnabled?: boolean;
 
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   @IsOptional()

@@ -8,8 +8,11 @@ import {
   Param,
   ParseUUIDPipe,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   Query,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -49,21 +52,25 @@ export class ProductsController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('image'))
   create(
     @Body() dto: CreateProductDto,
+    @UploadedFile() file: Express.Multer.File,
     @TenantId() tenantId: string,
   ) {
-    return this.productsService.create(dto, tenantId);
+    return this.productsService.create(dto, tenantId, file);
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('image'))
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateProductDto,
+    @UploadedFile() file: Express.Multer.File,
     @TenantId() tenantId: string,
   ) {
-    return this.productsService.update(id, dto, tenantId);
+    return this.productsService.update(id, dto, tenantId, file);
   }
 
   @Delete(':id')

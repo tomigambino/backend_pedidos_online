@@ -12,6 +12,7 @@ import { CreateExceptionDto } from './dto/create-exception.dto';
 import { UpdateExceptionDto } from './dto/update-exception.dto';
 import { ExceptionResponseDto } from './dto/exception-response.dto';
 import { TenantConfigResponseDto } from './dto/tenant-config-response.dto';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 @Injectable()
 export class TenantsService {
@@ -22,13 +23,19 @@ export class TenantsService {
     private readonly scheduleRepo: Repository<RegularSchedule>,
     @InjectRepository(AvailabilityException)
     private readonly exceptionRepo: Repository<AvailabilityException>,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  async update(dto: UpdateTenantDto, tenantId: string): Promise<Tenant> {
+  async update(
+    tenantId: string,
+    dto: UpdateTenantDto,
+    files?: {
+      logo?: Express.Multer.File[];
+      banner?: Express.Multer.File[];
+    },
+  ): Promise<Tenant> {
     const tenant = await this.findOneOrFail(tenantId);
     if (dto.name !== undefined) tenant.name = dto.name;
-    if (dto.logo !== undefined) tenant.logo = dto.logo;
-    if (dto.banner !== undefined) tenant.banner = dto.banner;
     if (dto.primaryColor !== undefined) tenant.primaryColor = dto.primaryColor;
     if (dto.secondaryColor !== undefined) tenant.secondaryColor = dto.secondaryColor;
     if (dto.description !== undefined) tenant.description = dto.description;
@@ -41,6 +48,15 @@ export class TenantsService {
     if (dto.isOpen !== undefined) tenant.isOpen = dto.isOpen;
     if (dto.deliveryCostEnabled !== undefined) tenant.deliveryCostEnabled = dto.deliveryCostEnabled;
     if (dto.deliveryCost !== undefined) tenant.deliveryCost = dto.deliveryCost;
+    const folder = `pedilo/${tenant.slug}/branding/`;
+    const logo = files?.logo?.[0];
+    const banner = files?.banner?.[0];
+    if (logo) {
+      tenant.logo = await this.cloudinaryService.uploadImage(logo.buffer, folder);
+    }
+    if (banner) {
+      tenant.banner = await this.cloudinaryService.uploadImage(banner.buffer, folder);
+    }
     return this.tenantRepo.save(tenant);
   }
 

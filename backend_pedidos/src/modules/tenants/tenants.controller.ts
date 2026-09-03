@@ -8,7 +8,10 @@ import {
   Param,
   ParseUUIDPipe,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { TenantsService } from './tenants.service';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { CreateRegularScheduleDto } from './dto/create-regular-schedule.dto';
@@ -29,11 +32,19 @@ export class TenantsController {
 
   @UseGuards(JwtAuthGuard)
   @Patch('admin/tenants')
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'logo', maxCount: 1 },
+    { name: 'banner', maxCount: 1 },
+  ]))
   update(
     @Body() dto: UpdateTenantDto,
+    @UploadedFiles() files: {
+      logo?: Express.Multer.File[];
+      banner?: Express.Multer.File[];
+    },
     @TenantId() tenantId: string,
   ) {
-    return this.tenantsService.update(dto, tenantId);
+    return this.tenantsService.update(tenantId, dto, files);
   }
 
   @UseGuards(JwtAuthGuard)
