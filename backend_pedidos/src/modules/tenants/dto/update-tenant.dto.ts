@@ -5,7 +5,13 @@ import {
   IsNumber,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+
+function toBoolean({ value }: { value: unknown }): unknown {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value === 'true';
+  return value;
+}
 
 export class UpdateTenantDto {
   @IsString()
@@ -48,12 +54,12 @@ export class UpdateTenantDto {
   @IsOptional()
   bank?: string;
 
-  @Type(() => Boolean)
+  @Transform(toBoolean)
   @IsBoolean()
   @IsOptional()
   isOpen?: boolean;
 
-  @Type(() => Boolean)
+  @Transform(toBoolean)
   @IsBoolean()
   @IsOptional()
   deliveryCostEnabled?: boolean;
