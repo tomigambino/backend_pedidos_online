@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from './entities/category.entity';
@@ -19,11 +16,17 @@ export class CategoriesService {
     private readonly categoryRepo: Repository<Category>,
   ) {}
 
-  async findAll(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<CategoryResponseDto>> {
+  async findAll(
+    tenantId: string,
+    pagination?: PaginationDto,
+  ): Promise<PaginatedResult<CategoryResponseDto>> {
     return this.runFindAll(tenantId, pagination, true);
   }
 
-  async findAllAdmin(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<CategoryResponseDto>> {
+  async findAllAdmin(
+    tenantId: string,
+    pagination?: PaginationDto,
+  ): Promise<PaginatedResult<CategoryResponseDto>> {
     return this.runFindAll(tenantId, pagination, false);
   }
 
@@ -36,7 +39,8 @@ export class CategoriesService {
 
     const joinCondition = `p.category_id = c.id AND p.deleted_at IS NULL${onlyActive ? ' AND p.is_active = true' : ''}`;
 
-    const queryBuilder = this.categoryRepo.createQueryBuilder('c')
+    const queryBuilder = this.categoryRepo
+      .createQueryBuilder('c')
       .leftJoin(Product, 'p', joinCondition)
       .where('c.tenant_id = :tenantId', { tenantId })
       .andWhere('c.deleted_at IS NULL')
@@ -59,7 +63,7 @@ export class CategoriesService {
     ]);
 
     return {
-      data: rawData.map(item => ({
+      data: rawData.map((item) => ({
         id: item.id,
         name: item.name,
         productCount: Number(item.product_count),

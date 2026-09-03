@@ -44,7 +44,7 @@ export class Product {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
-  @Column({ name: 'image_url', type: 'varchar',nullable: true })
+  @Column({ name: 'image_url', type: 'varchar', nullable: true })
   imageUrl: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })

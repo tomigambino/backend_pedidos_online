@@ -37,25 +37,34 @@ export class TenantsService {
     const tenant = await this.findOneOrFail(tenantId);
     if (dto.name !== undefined) tenant.name = dto.name;
     if (dto.primaryColor !== undefined) tenant.primaryColor = dto.primaryColor;
-    if (dto.secondaryColor !== undefined) tenant.secondaryColor = dto.secondaryColor;
+    if (dto.secondaryColor !== undefined)
+      tenant.secondaryColor = dto.secondaryColor;
     if (dto.description !== undefined) tenant.description = dto.description;
     if (dto.whatsapp !== undefined) tenant.whatsapp = dto.whatsapp;
     if (dto.address !== undefined) tenant.address = dto.address;
     if (dto.cbu !== undefined) tenant.cbu = dto.cbu;
     if (dto.alias !== undefined) tenant.alias = dto.alias;
-    if (dto.accountHolder !== undefined) tenant.accountHolder = dto.accountHolder;
+    if (dto.accountHolder !== undefined)
+      tenant.accountHolder = dto.accountHolder;
     if (dto.bank !== undefined) tenant.bank = dto.bank;
     if (dto.isOpen !== undefined) tenant.isOpen = dto.isOpen;
-    if (dto.deliveryCostEnabled !== undefined) tenant.deliveryCostEnabled = dto.deliveryCostEnabled;
+    if (dto.deliveryCostEnabled !== undefined)
+      tenant.deliveryCostEnabled = dto.deliveryCostEnabled;
     if (dto.deliveryCost !== undefined) tenant.deliveryCost = dto.deliveryCost;
     const folder = `pedilo/${tenant.slug}/branding/`;
     const logo = files?.logo?.[0];
     const banner = files?.banner?.[0];
     if (logo) {
-      tenant.logo = await this.cloudinaryService.uploadImage(logo.buffer, folder);
+      tenant.logo = await this.cloudinaryService.uploadImage(
+        logo.buffer,
+        folder,
+      );
     }
     if (banner) {
-      tenant.banner = await this.cloudinaryService.uploadImage(banner.buffer, folder);
+      tenant.banner = await this.cloudinaryService.uploadImage(
+        banner.buffer,
+        folder,
+      );
     }
     return this.tenantRepo.save(tenant);
   }
@@ -84,8 +93,8 @@ export class TenantsService {
       deliveryCostEnabled: tenant.deliveryCostEnabled,
       deliveryCost: tenant.deliveryCost ? Number(tenant.deliveryCost) : null,
       schedule: {
-        regular: regular.map(r => this.toScheduleResponse(r)),
-        exceptions: exceptions.map(e => this.toExceptionResponse(e)),
+        regular: regular.map((r) => this.toScheduleResponse(r)),
+        exceptions: exceptions.map((e) => this.toExceptionResponse(e)),
       },
     };
   }
@@ -95,7 +104,7 @@ export class TenantsService {
       where: { tenantId },
       order: { dayOfWeek: 'ASC' },
     });
-    return schedules.map(r => this.toScheduleResponse(r));
+    return schedules.map((r) => this.toScheduleResponse(r));
   }
 
   async createSchedule(
@@ -134,7 +143,7 @@ export class TenantsService {
       where: { tenantId },
       order: { date: 'DESC' },
     });
-    return exceptions.map(e => this.toExceptionResponse(e));
+    return exceptions.map((e) => this.toExceptionResponse(e));
   }
 
   async createException(
@@ -174,25 +183,52 @@ export class TenantsService {
     await this.exceptionRepo.remove(exception);
   }
 
+  async removeBrandingImage(
+    tenantId: string,
+    field: 'logo' | 'banner',
+  ): Promise<Tenant> {
+    const tenant = await this.findOneOrFail(tenantId);
+    if (field === 'logo' && tenant.logo) {
+      await this.cloudinaryService.deleteImage(tenant.logo);
+      tenant.logo = null;
+    } else if (field === 'banner' && tenant.banner) {
+      await this.cloudinaryService.deleteImage(tenant.banner);
+      tenant.banner = null;
+    }
+    return this.tenantRepo.save(tenant);
+  }
+
   private async findOneOrFail(tenantId: string): Promise<Tenant> {
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
     return tenant;
   }
 
-  private async findScheduleOrFail(id: string, tenantId: string): Promise<RegularSchedule> {
-    const schedule = await this.scheduleRepo.findOne({ where: { id, tenantId } });
+  private async findScheduleOrFail(
+    id: string,
+    tenantId: string,
+  ): Promise<RegularSchedule> {
+    const schedule = await this.scheduleRepo.findOne({
+      where: { id, tenantId },
+    });
     if (!schedule) throw new NotFoundException('Horario no encontrado');
     return schedule;
   }
 
-  private async findExceptionOrFail(id: string, tenantId: string): Promise<AvailabilityException> {
-    const exception = await this.exceptionRepo.findOne({ where: { id, tenantId } });
+  private async findExceptionOrFail(
+    id: string,
+    tenantId: string,
+  ): Promise<AvailabilityException> {
+    const exception = await this.exceptionRepo.findOne({
+      where: { id, tenantId },
+    });
     if (!exception) throw new NotFoundException('Excepción no encontrada');
     return exception;
   }
 
-  private toScheduleResponse(schedule: RegularSchedule): RegularScheduleResponseDto {
+  private toScheduleResponse(
+    schedule: RegularSchedule,
+  ): RegularScheduleResponseDto {
     return {
       id: schedule.id,
       dayOfWeek: schedule.dayOfWeek,
@@ -201,7 +237,9 @@ export class TenantsService {
     };
   }
 
-  private toExceptionResponse(exception: AvailabilityException): ExceptionResponseDto {
+  private toExceptionResponse(
+    exception: AvailabilityException,
+  ): ExceptionResponseDto {
     return {
       id: exception.id,
       date: exception.date,

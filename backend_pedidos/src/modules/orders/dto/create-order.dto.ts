@@ -33,7 +33,7 @@ export class CreateOrderDto {
   @IsEnum(DeliveryType)
   deliveryType: DeliveryType;
 
-  @ValidateIf(o => o.deliveryType === DeliveryType.ENVIO_DOMICILIO)
+  @ValidateIf((o) => o.deliveryType === DeliveryType.ENVIO_DOMICILIO)
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)
@@ -47,7 +47,7 @@ export class CreateOrderDto {
   @MaxLength(300)
   notes?: string;
 
-  @ValidateIf(o => o.deliveryType === DeliveryType.ENVIO_DOMICILIO)
+  @ValidateIf((o) => o.deliveryType === DeliveryType.ENVIO_DOMICILIO)
   @IsOptional()
   @IsString()
   @MaxLength(300)

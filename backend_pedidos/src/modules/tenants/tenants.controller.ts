@@ -32,13 +32,16 @@ export class TenantsController {
 
   @UseGuards(JwtAuthGuard)
   @Patch('admin/tenants')
-  @UseInterceptors(FileFieldsInterceptor([
-    { name: 'logo', maxCount: 1 },
-    { name: 'banner', maxCount: 1 },
-  ]))
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'logo', maxCount: 1 },
+      { name: 'banner', maxCount: 1 },
+    ]),
+  )
   update(
     @Body() dto: UpdateTenantDto,
-    @UploadedFiles() files: {
+    @UploadedFiles()
+    files: {
       logo?: Express.Multer.File[];
       banner?: Express.Multer.File[];
     },
@@ -113,5 +116,17 @@ export class TenantsController {
     @TenantId() tenantId: string,
   ) {
     return this.tenantsService.deleteException(id, tenantId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('admin/tenants/logo')
+  removeLogo(@TenantId() tenantId: string) {
+    return this.tenantsService.removeBrandingImage(tenantId, 'logo');
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('admin/tenants/banner')
+  removeBanner(@TenantId() tenantId: string) {
+    return this.tenantsService.removeBrandingImage(tenantId, 'banner');
   }
 }

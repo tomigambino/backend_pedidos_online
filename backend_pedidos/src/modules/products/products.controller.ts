@@ -75,10 +75,7 @@ export class ProductsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @TenantId() tenantId: string,
-  ) {
+  remove(@Param('id', ParseUUIDPipe) id: string, @TenantId() tenantId: string) {
     return this.productsService.remove(id, tenantId);
   }
 
@@ -93,10 +90,16 @@ export class ProductsController {
 
   @Patch(':id/hide')
   @UseGuards(JwtAuthGuard)
-  hide(
+  hide(@Param('id', ParseUUIDPipe) id: string, @TenantId() tenantId: string) {
+    return this.productsService.hide(id, tenantId);
+  }
+
+  @Delete(':id/image')
+  @UseGuards(JwtAuthGuard)
+  removeImage(
     @Param('id', ParseUUIDPipe) id: string,
     @TenantId() tenantId: string,
   ) {
-    return this.productsService.hide(id, tenantId);
+    return this.productsService.removeImage(id, tenantId);
   }
 }

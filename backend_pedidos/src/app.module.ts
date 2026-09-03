@@ -25,11 +25,13 @@ import { Tenant } from './modules/tenants/entities/tenant.entity';
     ProductsModule,
     OrdersModule,
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{
-      name: 'default',
-      ttl: 60000,
-      limit: 10,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60000,
+        limit: 10,
+      },
+    ]),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST,
@@ -47,20 +49,24 @@ import { Tenant } from './modules/tenants/entities/tenant.entity';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(TenantMiddleware)
-      .forRoutes(
-        { path: '/:tenant/menu', method: RequestMethod.GET },
-        { path: '/:tenant/orders', method: RequestMethod.GET },
-        { path: '/:tenant/orders', method: RequestMethod.POST },
-        { path: '/:tenant/orders/:uuid/track', method: RequestMethod.GET },
-        { path: '/:tenant/categories', method: RequestMethod.ALL },
-        { path: '/:tenant/products', method: RequestMethod.ALL },
-        { path: '/:tenant/products/admin', method: RequestMethod.GET },
-        { path: '/:tenant/orders/:uuid/customer/phone', method: RequestMethod.PATCH },
-        { path: '/:tenant/availability', method: RequestMethod.GET },
-        { path: '/:tenant/admin/*path', method: RequestMethod.ALL },
-        { path: '/:tenant/orders/:uuid/status-stream', method: RequestMethod.GET },
-      );
+    consumer.apply(TenantMiddleware).forRoutes(
+      { path: '/:tenant/menu', method: RequestMethod.GET },
+      { path: '/:tenant/orders', method: RequestMethod.GET },
+      { path: '/:tenant/orders', method: RequestMethod.POST },
+      { path: '/:tenant/orders/:uuid/track', method: RequestMethod.GET },
+      { path: '/:tenant/categories', method: RequestMethod.ALL },
+      { path: '/:tenant/products', method: RequestMethod.ALL },
+      { path: '/:tenant/products/admin', method: RequestMethod.GET },
+      {
+        path: '/:tenant/orders/:uuid/customer/phone',
+        method: RequestMethod.PATCH,
+      },
+      { path: '/:tenant/availability', method: RequestMethod.GET },
+      { path: '/:tenant/admin/*path', method: RequestMethod.ALL },
+      {
+        path: '/:tenant/orders/:uuid/status-stream',
+        method: RequestMethod.GET,
+      },
+    );
   }
 }

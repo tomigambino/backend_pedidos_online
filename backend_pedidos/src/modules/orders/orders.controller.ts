@@ -38,19 +38,16 @@ export class OrdersController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  findAll(
-    @TenantId() tenantId: string,
-    @Query() query?: FindOrdersQueryDto,
-  ) {
-    return this.ordersService.findAll(tenantId, query ?? new FindOrdersQueryDto());
+  findAll(@TenantId() tenantId: string, @Query() query?: FindOrdersQueryDto) {
+    return this.ordersService.findAll(
+      tenantId,
+      query ?? new FindOrdersQueryDto(),
+    );
   }
 
   @Get('admin/counts')
   @UseGuards(JwtAuthGuard)
-  getCounts(
-    @TenantId() tenantId: string,
-    @Query() query: FindOrdersQueryDto,
-  ) {
+  getCounts(@TenantId() tenantId: string, @Query() query: FindOrdersQueryDto) {
     return this.ordersService.countByStatus(tenantId, query);
   }
 
@@ -125,9 +122,12 @@ export class OrdersController {
     const updates$ = this.sseService.getOrCreate(uuid).asObservable();
 
     return concat(initial$, updates$).pipe(
-      map(status => ({ data: status }) as MessageEvent),
+      map((status) => ({ data: status })),
       // Completa automáticamente al llegar a estado terminal
-      takeWhile(event => !TERMINAL_STATES.includes(event.data as OrderStatus), true),
+      takeWhile(
+        (event) => !TERMINAL_STATES.includes(event.data as OrderStatus),
+        true,
+      ),
     );
   }
 }

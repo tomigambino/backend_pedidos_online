@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
@@ -23,7 +27,10 @@ export class ProductsService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  async findAll(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<ProductResponseDto>> {
+  async findAll(
+    tenantId: string,
+    pagination?: PaginationDto,
+  ): Promise<PaginatedResult<ProductResponseDto>> {
     const { page = 1, limit = 10 } = pagination ?? {};
 
     const [products, total] = await this.productRepo
@@ -39,7 +46,7 @@ export class ProductsService {
       .getManyAndCount();
 
     return {
-      data: products.map(p => this.toResponse(p)),
+      data: products.map((p) => this.toResponse(p)),
       total,
       page,
       limit,
@@ -47,7 +54,10 @@ export class ProductsService {
     };
   }
 
-  async findAllAdmin(tenantId: string, pagination?: PaginationDto): Promise<PaginatedResult<ProductResponseDto>> {
+  async findAllAdmin(
+    tenantId: string,
+    pagination?: PaginationDto,
+  ): Promise<PaginatedResult<ProductResponseDto>> {
     const { page = 1, limit = 10 } = pagination ?? {};
     const [products, total] = await this.productRepo.findAndCount({
       where: { tenantId },
@@ -56,7 +66,7 @@ export class ProductsService {
       order: { name: 'ASC' },
     });
     return {
-      data: products.map(p => this.toResponse(p)),
+      data: products.map((p) => this.toResponse(p)),
       total,
       page,
       limit,
@@ -112,6 +122,16 @@ export class ProductsService {
     await this.productRepo.softRemove(product);
   }
 
+  async removeImage(id: string, tenantId: string): Promise<ProductResponseDto> {
+    const product = await this.findOneOrFail(id, tenantId);
+    if (product.imageUrl) {
+      await this.cloudinaryService.deleteImage(product.imageUrl);
+      product.imageUrl = null;
+    }
+    const saved = await this.productRepo.save(product);
+    return this.toResponse(saved);
+  }
+
   async activate(id: string, tenantId: string): Promise<ProductResponseDto> {
     const product = await this.findOneOrFail(id, tenantId);
     product.isActive = true;
@@ -134,10 +154,17 @@ export class ProductsService {
     return product;
   }
 
-  private async validateCategory(categoryId: string, tenantId: string): Promise<void> {
-    const category = await this.categoryRepo.findOne({ where: { id: categoryId, tenantId } });
+  private async validateCategory(
+    categoryId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const category = await this.categoryRepo.findOne({
+      where: { id: categoryId, tenantId },
+    });
     if (!category) {
-      throw new BadRequestException('Categoría no encontrada o no pertenece a este negocio');
+      throw new BadRequestException(
+        'Categoría no encontrada o no pertenece a este negocio',
+      );
     }
   }
 

@@ -1,7 +1,13 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 @Entity('tenants')
-export class Tenant{
+export class Tenant {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -11,11 +17,11 @@ export class Tenant{
   @Column()
   name: string;
 
-  @Column({ nullable: true })
-  logo: string;
+  @Column({ type: 'varchar', nullable: true })
+  logo: string | null;
 
-  @Column({ nullable: true })
-  banner: string;
+  @Column({ type: 'varchar', nullable: true })
+  banner: string | null;
 
   @Column({ name: 'primary_color', nullable: true })
   primaryColor: string;

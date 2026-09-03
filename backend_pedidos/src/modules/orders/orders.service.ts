@@ -15,7 +15,10 @@ import { OrderResponseDto } from './dto/order-response.dto';
 import { StatsResponseDto } from './dto/stats-response.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { PaginatedResult } from '../../common/interfaces/paginated-result.interface';
-import { TERMINAL_STATES, VALID_TRANSITIONS } from './constants/order-transitions';
+import {
+  TERMINAL_STATES,
+  VALID_TRANSITIONS,
+} from './constants/order-transitions';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { DeliveryType } from '../../common/enums/delivery-type.enum';
 import { PaymentMethod } from '../../common/enums/payment-method.enum';
@@ -40,7 +43,10 @@ export class OrdersService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async create(dto: CreateOrderDto, tenantId: string): Promise<OrderResponseDto> {
+  async create(
+    dto: CreateOrderDto,
+    tenantId: string,
+  ): Promise<OrderResponseDto> {
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
 
@@ -53,12 +59,15 @@ export class OrdersService {
       );
     }
 
-    return this.dataSource.transaction(async manager => {
+    return this.dataSource.transaction(async (manager) => {
       // Snapshot de productos
       const items = await Promise.all(
-        dto.items.map(async itemDto => {
+        dto.items.map(async (itemDto) => {
           // Delega a ProductsService — centraliza lógica y resuelve el isActive
-          const product = await this.productsService.findOneForOrder(itemDto.productId, tenantId);
+          const product = await this.productsService.findOneForOrder(
+            itemDto.productId,
+            tenantId,
+          );
           const item = new OrderItem();
           item.productId = product.id;
           item.name = product.name;
@@ -140,7 +149,7 @@ export class OrdersService {
 
     const [orders, total] = await qb.getManyAndCount();
     return {
-      data: orders.map(o => this.toResponse(o)),
+      data: orders.map((o) => this.toResponse(o)),
       total,
       page,
       limit,
@@ -178,10 +187,10 @@ export class OrdersService {
     const rows = await qb.getRawMany();
 
     const counts = Object.fromEntries(
-      Object.values(OrderStatus).map(s => [s, 0]),
+      Object.values(OrderStatus).map((s) => [s, 0]),
     ) as Record<OrderStatus, number>;
 
-    rows.forEach(r => {
+    rows.forEach((r) => {
       counts[r.status as OrderStatus] = Number(r.count);
     });
 
@@ -190,12 +199,17 @@ export class OrdersService {
 
   async findOne(id: string, tenantId: string): Promise<OrderResponseDto> {
     const order = await this.findOneOrFail(id, tenantId, {
-      items: true, customer: true, delivery: true,
+      items: true,
+      customer: true,
+      delivery: true,
     });
     return this.toResponse(order);
   }
 
-  async findByTracking(trackingUuid: string, tenantId: string): Promise<OrderResponseDto> {
+  async findByTracking(
+    trackingUuid: string,
+    tenantId: string,
+  ): Promise<OrderResponseDto> {
     const order = await this.orderRepo.findOne({
       where: { trackingUuid, tenantId },
       relations: { items: true, customer: true, delivery: true },
@@ -211,12 +225,16 @@ export class OrdersService {
     cancellationReason?: string,
   ): Promise<OrderResponseDto> {
     const order = await this.findOneOrFail(id, tenantId, {
-      items: true, customer: true, delivery: true,
+      items: true,
+      customer: true,
+      delivery: true,
     });
 
     const allowed = VALID_TRANSITIONS[order.status];
     if (!allowed.includes(newStatus)) {
-      throw new BadRequestException(`Transición inválida: ${order.status} → ${newStatus}`);
+      throw new BadRequestException(
+        `Transición inválida: ${order.status} → ${newStatus}`,
+      );
     }
 
     order.status = newStatus;
@@ -343,15 +361,18 @@ export class OrdersService {
         phone: order.customer.phone,
         address: order.customer?.address ?? null,
       },
-      delivery: order.delivery ? {
-        id: order.delivery.id,
-        address: order.delivery.address,
-        notes: order.delivery.notes ?? null,
-        deliveryFee: order.delivery.deliveryFee !== null
-          ? Number(order.delivery.deliveryFee)
-          : null,
-      } : null,
-      items: (order.items ?? []).map(item => ({
+      delivery: order.delivery
+        ? {
+            id: order.delivery.id,
+            address: order.delivery.address,
+            notes: order.delivery.notes ?? null,
+            deliveryFee:
+              order.delivery.deliveryFee !== null
+                ? Number(order.delivery.deliveryFee)
+                : null,
+          }
+        : null,
+      items: (order.items ?? []).map((item) => ({
         id: item.id,
         productId: item.productId,
         name: item.name,

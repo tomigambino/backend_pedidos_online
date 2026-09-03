@@ -49,10 +49,7 @@ export class CategoriesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  create(
-    @Body() dto: CreateCategoryDto,
-    @TenantId() tenantId: string,
-  ) {
+  create(@Body() dto: CreateCategoryDto, @TenantId() tenantId: string) {
     return this.categoriesService.create(dto, tenantId);
   }
 
@@ -68,10 +65,7 @@ export class CategoriesController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @TenantId() tenantId: string,
-  ) {
+  remove(@Param('id', ParseUUIDPipe) id: string, @TenantId() tenantId: string) {
     return this.categoriesService.remove(id, tenantId);
   }
 
@@ -86,10 +80,7 @@ export class CategoriesController {
 
   @Patch(':id/hide')
   @UseGuards(JwtAuthGuard)
-  hide(
-    @Param('id', ParseUUIDPipe) id: string,
-    @TenantId() tenantId: string,
-  ) {
+  hide(@Param('id', ParseUUIDPipe) id: string, @TenantId() tenantId: string) {
     return this.categoriesService.hide(id, tenantId);
   }
 }

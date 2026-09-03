@@ -1,4 +1,11 @@
-import { IsNumber, IsString, IsNotEmpty, Min, Max, Matches } from 'class-validator';
+import {
+  IsNumber,
+  IsString,
+  IsNotEmpty,
+  Min,
+  Max,
+  Matches,
+} from 'class-validator';
 
 export class CreateRegularScheduleDto {
   @IsNumber()
