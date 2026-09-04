@@ -85,7 +85,7 @@ export class ProductsService {
     file?: Express.Multer.File,
   ): Promise<ProductResponseDto> {
     await this.validateCategory(dto.categoryId, tenantId);
-    const imageUrl = await this.resolveImageUrl(tenantId, file);
+    const imageUrl = await this.resolveImageUrl(tenantId, null, file);
     const product = new Product();
     product.name = dto.name;
     product.description = dto.description ?? null;
@@ -111,7 +111,11 @@ export class ProductsService {
     if (dto.description !== undefined) product.description = dto.description;
     if (dto.price !== undefined) product.price = dto.price;
     if (dto.categoryId !== undefined) product.categoryId = dto.categoryId;
-    const imageUrl = await this.resolveImageUrl(tenantId, file);
+    const imageUrl = await this.resolveImageUrl(
+      tenantId,
+      product.imageUrl,
+      file,
+    );
     if (imageUrl) product.imageUrl = imageUrl;
     const saved = await this.productRepo.save(product);
     return this.toResponse(saved);
@@ -176,12 +180,17 @@ export class ProductsService {
 
   private async resolveImageUrl(
     tenantId: string,
+    currentImageUrl: string | null | undefined,
     file?: Express.Multer.File,
   ): Promise<string | undefined> {
     if (!file) return undefined;
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     if (!tenant) {
       throw new NotFoundException('Negocio no encontrado');
+    }
+    if (currentImageUrl) {
+      // fire-and-forget: no bloquea el upload de la nueva
+      this.cloudinaryService.deleteImage(currentImageUrl).catch(() => {});
     }
     const folder = `pedilo/${tenant.slug}/products/`;
     return this.cloudinaryService.uploadImage(file.buffer, folder);

@@ -55,12 +55,18 @@ export class TenantsService {
     const logo = files?.logo?.[0];
     const banner = files?.banner?.[0];
     if (logo) {
+      if (tenant.logo) {
+        this.cloudinaryService.deleteImage(tenant.logo).catch(() => {});
+      }
       tenant.logo = await this.cloudinaryService.uploadImage(
         logo.buffer,
         folder,
       );
     }
     if (banner) {
+      if (tenant.banner) {
+        this.cloudinaryService.deleteImage(tenant.banner).catch(() => {});
+      }
       tenant.banner = await this.cloudinaryService.uploadImage(
         banner.buffer,
         folder,
