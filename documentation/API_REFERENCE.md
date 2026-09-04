@@ -348,6 +348,13 @@ Establece `isActive = false`.
 
 ---
 
+### `DELETE /:tenant/products/:id/image` 🔒
+
+Elimina la imagen del producto (Cloudinary) y setea `imageUrl = null`.
+Idempotente: si el producto no tiene imagen, no falla.
+
+**Respuesta:** `200 OK` — `ProductResponseDto` con `imageUrl: null`.
+
 ## Pedidos
 
 ### `POST /:tenant/orders` 🔓
@@ -605,6 +612,22 @@ Actualiza la configuración del tenant.
 **Respuesta:** tenant actualizado (entera).
 
 ---
+
+### `DELETE /:tenant/admin/tenants/logo` 🔒
+
+Elimina el logo del tenant (Cloudinary) y setea `logo = null`.
+Idempotente: si no hay logo, no falla.
+
+**Respuesta:** `200 OK` — tenant actualizado.
+
+---
+
+### `DELETE /:tenant/admin/tenants/banner` 🔒
+
+Elimina el banner del tenant (Cloudinary) y setea `banner = null`.
+Idempotente: si no hay banner, no falla.
+
+**Respuesta:** `200 OK` — tenant actualizado.
 
 ### Horarios (Schedule)
 
