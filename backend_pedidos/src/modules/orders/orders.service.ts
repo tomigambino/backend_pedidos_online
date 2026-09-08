@@ -224,31 +224,41 @@ export class OrdersService {
     newStatus: OrderStatus,
     cancellationReason?: string,
   ): Promise<OrderResponseDto> {
-    const order = await this.findOneOrFail(id, tenantId, {
-      items: true,
-      customer: true,
-      delivery: true,
+    const order = await this.dataSource.transaction(async (manager) => {
+      const locked = await manager
+        .createQueryBuilder(Order, 'order')
+        .setLock('pessimistic_write', undefined, ['order'])
+        .leftJoinAndSelect('order.customer', 'customer')
+        .leftJoinAndSelect('order.items', 'items')
+        .leftJoinAndSelect('order.delivery', 'delivery')
+        .where('order.id = :id AND order.tenantId = :tenantId', {
+          id,
+          tenantId,
+        })
+        .getOne();
+
+      if (!locked) throw new NotFoundException('Pedido no encontrado');
+
+      const allowed = VALID_TRANSITIONS[locked.status];
+      if (!allowed.includes(newStatus)) {
+        throw new BadRequestException(
+          `Transición inválida: ${locked.status} → ${newStatus}`,
+        );
+      }
+
+      locked.status = newStatus;
+      locked.cancellationReason =
+        newStatus === OrderStatus.CANCELADO ? (cancellationReason ?? null) : null;
+
+      return manager.save(locked);
     });
 
-    const allowed = VALID_TRANSITIONS[order.status];
-    if (!allowed.includes(newStatus)) {
-      throw new BadRequestException(
-        `Transición inválida: ${order.status} → ${newStatus}`,
-      );
+    this.sseService.emit(order.trackingUuid, order.status);
+    if (TERMINAL_STATES.includes(order.status)) {
+      this.sseService.close(order.trackingUuid);
     }
 
-    order.status = newStatus;
-    order.cancellationReason =
-      newStatus === OrderStatus.CANCELADO ? (cancellationReason ?? null) : null;
-
-    const saved = await this.orderRepo.save(order);
-
-    this.sseService.emit(saved.trackingUuid, saved.status);
-    if (TERMINAL_STATES.includes(saved.status)) {
-      this.sseService.close(saved.trackingUuid);
-    }
-
-    return this.toResponse(saved);
+    return this.toResponse(order);
   }
 
   async getWhatsAppLink(
