@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { Observable, concat, defer } from 'rxjs';
 import { map, takeWhile } from 'rxjs/operators';
+import { Throttle } from '@nestjs/throttler';
 import { OrdersService } from './orders.service';
 import { OrdersSseService } from './orders-sse.service';
 import { FindOrdersQueryDto } from './dto/find-orders-query.dto';
@@ -31,6 +32,7 @@ export class OrdersController {
     private readonly sseService: OrdersSseService,
   ) {}
 
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post()
   create(@Body() dto: CreateOrderDto, @TenantId() tenantId: string) {
     return this.ordersService.create(dto, tenantId);
@@ -75,6 +77,7 @@ export class OrdersController {
     );
   }
 
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Get(':uuid/track')
   track(
     @Param('uuid', ParseUUIDPipe) uuid: string,
@@ -98,6 +101,7 @@ export class OrdersController {
     return this.ordersService.getWhatsAppLink(id, tenantId);
   }
 
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Patch(':uuid/customer/phone')
   updatePhone(
     @Param('uuid', ParseUUIDPipe) uuid: string,

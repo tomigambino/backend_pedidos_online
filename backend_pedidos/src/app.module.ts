@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -29,7 +30,7 @@ import { Tenant } from './modules/tenants/entities/tenant.entity';
       {
         name: 'default',
         ttl: 60000,
-        limit: 10,
+        limit: 60,
       },
     ]),
     TypeOrmModule.forRoot({
@@ -45,7 +46,13 @@ import { Tenant } from './modules/tenants/entities/tenant.entity';
     TypeOrmModule.forFeature([Tenant]),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
