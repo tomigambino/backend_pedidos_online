@@ -12,7 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Observable, concat, defer } from 'rxjs';
-import { map, takeWhile } from 'rxjs/operators';
+import { map, takeWhile, finalize } from 'rxjs/operators';
 import { Throttle } from '@nestjs/throttler';
 import { OrdersService } from './orders.service';
 import { OrdersSseService } from './orders-sse.service';
@@ -117,6 +117,8 @@ export class OrdersController {
     @Param('uuid', ParseUUIDPipe) uuid: string,
     @TenantId() tenantId: string,
   ): Observable<MessageEvent> {
+    this.sseService.connect(uuid);
+
     // defer para que la consulta ocurra en el momento de suscripción
     const initial$ = defer(async () => {
       const order = await this.ordersService.findByTracking(uuid, tenantId);
@@ -132,6 +134,7 @@ export class OrdersController {
         (event) => !TERMINAL_STATES.includes(event.data as OrderStatus),
         true,
       ),
+      finalize(() => this.sseService.disconnect(uuid)),
     );
   }
 }
