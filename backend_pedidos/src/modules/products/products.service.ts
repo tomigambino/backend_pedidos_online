@@ -40,6 +40,7 @@ export class ProductsService {
       .andWhere('product.isActive = true')
       .andWhere('category.isActive = true')
       .andWhere('category.deletedAt IS NULL')
+      .andWhere('product.deletedAt IS NULL')
       .orderBy('product.name', 'ASC')
       .skip((page - 1) * limit)
       .take(limit)
