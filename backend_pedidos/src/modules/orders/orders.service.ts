@@ -226,16 +226,16 @@ export class OrdersService {
   ): Promise<OrderResponseDto> {
     const order = await this.dataSource.transaction(async (manager) => {
       const locked = await manager
-        .createQueryBuilder(Order, 'order')
-        .setLock('pessimistic_write', undefined, ['order'])
-        .leftJoinAndSelect('order.customer', 'customer')
-        .leftJoinAndSelect('order.items', 'items')
-        .leftJoinAndSelect('order.delivery', 'delivery')
-        .where('order.id = :id AND order.tenantId = :tenantId', {
-          id,
-          tenantId,
-        })
-        .getOne();
+      .createQueryBuilder(Order, 'o')
+      .setLock('pessimistic_write', undefined, ['o'])
+      .leftJoinAndSelect('o.customer', 'customer')
+      .leftJoinAndSelect('o.items', 'items')
+      .leftJoinAndSelect('o.delivery', 'delivery')
+      .where('o.id = :id AND o.tenantId = :tenantId', {
+        id,
+        tenantId,
+      })
+      .getOne();
 
       if (!locked) throw new NotFoundException('Pedido no encontrado');
 
