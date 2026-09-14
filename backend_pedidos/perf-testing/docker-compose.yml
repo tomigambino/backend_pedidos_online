@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  postgres-perf:
+    image: postgres:16
+    container_name: pedilo-perf-test-db
+    environment:
+      POSTGRES_USER: perf_user
+      POSTGRES_PASSWORD: perf_pass
+      POSTGRES_DB: pedilo_perf_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - perf_test_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perf_user -d pedilo_perf_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  perf_test_pgdata:
