@@ -41,6 +41,7 @@ DATABASE_URL_PERF="postgresql://perf_user:perf_pass@localhost:5433/pedilo_perf_t
 
 This creates:
 - 1 tenant: `perf-test`
+- 1 user: `perf@test.com` / `perfpass123` (role: OWNER, linked to `perf-test` tenant)
 - 20 categories: "Categoría 1"..."Categoría 20"
 - 100 products: "Producto 1"..."Producto 100" (5 per category, deterministic prices)
 - 1000 customers: "Cliente 1"..."Cliente 1000" (deterministic phones)
@@ -71,6 +72,29 @@ docker-compose down -v
 ```
 
 The `-v` flag removes the named volume, wiping all data.
+
+## Test Credentials
+
+The seed creates a test user for authentication against protected endpoints:
+
+| Field | Value |
+|-------|-------|
+| **Email** | `perf@test.com` |
+| **Password** | `perfpass123` |
+| **Role** | `OWNER` |
+| **Tenant** | `perf-test` |
+
+> ⚠️ **Only for isolated performance testing environment.** These credentials are deterministic and public — never use in production or shared environments.
+
+### Login Example
+
+```bash
+curl -X POST http://localhost:3000/perf-test/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "perf@test.com", "password": "perfpass123"}'
+```
+
+Response includes `accessToken` for use with protected endpoints.
 
 ## Environment Variables
 

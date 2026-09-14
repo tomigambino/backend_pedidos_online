@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
+import * as bcrypt from 'bcrypt';
 
 const DATABASE_URL_PERF = process.env.DATABASE_URL_PERF ?? '';
 
@@ -58,6 +59,7 @@ async function cleanupTenantData(tenantId: string): Promise<void> {
   await dataSource.query(`DELETE FROM deliveries WHERE id IN (SELECT delivery_id FROM orders WHERE tenant_id = $1 AND delivery_id IS NOT NULL)`, [tenantId]);
   await dataSource.query(`DELETE FROM orders WHERE tenant_id = $1`, [tenantId]);
   await dataSource.query(`DELETE FROM customers WHERE id IN (SELECT customer_id FROM orders WHERE tenant_id = $1)`, [tenantId]);
+  await dataSource.query(`DELETE FROM users WHERE tenant_id = $1`, [tenantId]);
   await dataSource.query(`DELETE FROM products WHERE tenant_id = $1`, [tenantId]);
   await dataSource.query(`DELETE FROM categories WHERE tenant_id = $1`, [tenantId]);
   console.log(`Cleaned up data for tenant: ${tenantId}`);
@@ -109,6 +111,17 @@ async function seedCustomers(count: number): Promise<string[]> {
   }
   console.log(`Created ${customerIds.length} customers`);
   return customerIds;
+}
+
+async function seedUser(tenantId: string): Promise<void> {
+  const passwordHash = await bcrypt.hash('perfpass123', 10);
+  const userId = uuidv4();
+  await dataSource.query(
+    `INSERT INTO users (id, tenant_id, email, password, role, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 'OWNER', NOW(), NOW())`,
+    [userId, tenantId, 'perf@test.com', passwordHash]
+  );
+  console.log(`Created user: perf@test.com (tenant: ${tenantId})`);
 }
 
 async function seedOrders(
@@ -176,6 +189,7 @@ async function main(): Promise<void> {
     console.log('Database connection established');
 
     const tenantId = await getOrCreateTenant();
+    await seedUser(tenantId);
     const categoryIds = await seedCategories(tenantId);
     const products = await seedProducts(tenantId, categoryIds);
     const customerIds = await seedCustomers(1000);
