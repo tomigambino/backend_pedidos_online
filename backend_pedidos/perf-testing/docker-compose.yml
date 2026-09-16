@@ -12,11 +12,47 @@ services:
       - "5433:5432"
     volumes:
       - perf_test_pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 1.5g
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U perf_user -d pedilo_perf_test"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  backend-perf:
+    image: pedilo-backend-perf:latest
+    container_name: pedilo-perf-test-backend
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres-perf:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1.2'
+          memory: 6g
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   perf_test_pgdata:

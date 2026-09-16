@@ -30,7 +30,7 @@ import { Tenant } from './modules/tenants/entities/tenant.entity';
       {
         name: 'default',
         ttl: 60000,
-        limit: 60,
+        limit: 100000,
       },
     ]),
     TypeOrmModule.forRoot({
@@ -42,6 +42,10 @@ import { Tenant } from './modules/tenants/entities/tenant.entity';
       database: process.env.DB_NAME,
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: true,
+      extra: {
+        max: 30,                      // conexiones máximas en el pool
+        connectionTimeoutMillis: 5000, // falla rápido en vez de colgar 60s
+      },
     }),
     TypeOrmModule.forFeature([Tenant]),
   ],

@@ -32,7 +32,7 @@ export class OrdersController {
     private readonly sseService: OrdersSseService,
   ) {}
 
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  //@Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post()
   create(@Body() dto: CreateOrderDto, @TenantId() tenantId: string) {
     return this.ordersService.create(dto, tenantId);

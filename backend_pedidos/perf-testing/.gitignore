@@ -1,0 +1,5 @@
+.env
+seed.js
+seed.d.ts
+seed.js.map
+dist
