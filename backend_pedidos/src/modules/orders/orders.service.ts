@@ -29,6 +29,17 @@ import { FindOrdersQueryDto } from './dto/find-orders-query.dto';
 
 const AR_OFFSET = '-03:00';
 
+const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  [OrderStatus.PENDIENTE]: 'pendiente',
+  [OrderStatus.EN_PREPARACION]: 'en preparación',
+  [OrderStatus.LISTO]: 'listo para retirar',
+  [OrderStatus.ENTREGADO]: 'entregado',
+  [OrderStatus.CANCELADO]: 'cancelado',
+  [OrderStatus.NO_RETIRADO]: 'no retirado',
+};
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -275,19 +286,30 @@ export class OrdersService {
       throw new BadRequestException('El cliente no tiene teléfono registrado');
     }
 
-    const statusLabels: Record<string, string> = {
-      PENDIENTE: 'pendiente',
-      EN_PREPARACION: 'en preparación',
-      LISTO: 'listo para retirar',
-      ENTREGADO: 'entregado',
-      CANCELADO: 'cancelado',
-      NO_RETIRADO: 'no retirado',
-    };
-
-    const message = `¡Hola! Tu pedido en ${tenant?.name ?? 'el local'} está ${statusLabels[order.status] ?? order.status}. Seguilo acá: https://tuapp.com/${tenant?.slug ?? ''}/pedido/${order.trackingUuid}`;
+    const message = this.buildWhatsappMessage(order, tenant);
     const encoded = encodeURIComponent(message);
     const phone = customerPhone.replace(/[^\d]/g, '');
     return { url: `https://wa.me/${phone}?text=${encoded}`, message };
+  }
+
+  private buildWhatsappMessage(order: Order, tenant: Tenant | null): string {
+    const hasBankData = !!(
+      tenant?.cbu &&
+      tenant?.alias &&
+      tenant?.accountHolder &&
+      tenant?.bank
+    );
+    const trackingUrl = `${APP_URL}/${tenant?.slug ?? ''}/pedido/${order.trackingUuid}`;
+    const statusText = STATUS_LABELS[order.status] ?? order.status;
+    const tenantName = tenant?.name ?? 'el local';
+
+    if (tenant && order.paymentMethod === PaymentMethod.TRANSFERENCIA && hasBankData) {
+      return `¡Hola ${order.customer.name}! Tu pedido #${order.trackingUuid.slice(0, 8).toUpperCase()} en ${tenantName} está ${statusText}. Para completar el pago por transferencia:\n\n` +
+        `Banco: ${tenant.bank}\nAlias: ${tenant.alias}\nCBU: ${tenant.cbu}\nTitular: ${tenant.accountHolder}\nMonto: $${Number(order.total).toFixed(2)}\n\n` +
+        `Seguilo en tiempo real acá: ${trackingUrl}\nCualquier consulta, quedo a disposición. ¡Gracias por tu compra!`;
+    }
+
+    return `¡Hola ${order.customer.name}! Tu pedido #${order.trackingUuid.slice(0, 8).toUpperCase()} en ${tenantName} está ${statusText}. Seguilo en tiempo real acá: ${trackingUrl}. Cualquier consulta, quedo a disposición. ¡Gracias por tu compra!`;
   }
 
   async updateCustomerPhone(
