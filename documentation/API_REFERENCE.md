@@ -512,7 +512,7 @@ Genera un enlace de WhatsApp con el resumen del pedido para notificar al cliente
 ```json
 {
   "url": "https://wa.me/541155551234?text=...",
-  "message": "¡Hola! Tu pedido en el local está pendiente. Seguilo acá: https://tuapp.com/mi-tienda/pedido/<trackingUuid>"
+  "message": "¡Hola! Tu pedido en el local está pendiente. Seguilo acá: ${APP_URL}/mi-tienda/pedido/<trackingUuid>"
 }
 ```
 
