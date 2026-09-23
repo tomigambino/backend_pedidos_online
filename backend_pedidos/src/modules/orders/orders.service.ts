@@ -305,7 +305,7 @@ export class OrdersService {
 
     if (tenant && order.paymentMethod === PaymentMethod.TRANSFERENCIA && hasBankData) {
       return `¡Hola ${order.customer.name}! Tu pedido #${order.trackingUuid.slice(0, 8).toUpperCase()} en ${tenantName} está ${statusText}. Para completar el pago por transferencia:\n\n` +
-        `Banco: ${tenant.bank}\nAlias: ${tenant.alias}\nCBU: ${tenant.cbu}\nTitular: ${tenant.accountHolder}\nMonto: $${Number(order.total).toFixed(2)}\n\n` +
+        `Banco: ${tenant.bank}\nAlias: ${tenant.alias}\nCBU: ${tenant.cbu}\nTitular: ${tenant.accountHolder}\nMonto: $${Number(order.total).toLocaleString('es-AR')}\n\n` +
         `Seguilo en tiempo real acá: ${trackingUrl}\nCualquier consulta, quedo a disposición. ¡Gracias por tu compra!`;
     }
 
