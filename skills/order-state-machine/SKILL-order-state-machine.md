@@ -56,36 +56,56 @@ export class OrdersService {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
+    private readonly sseService: OrdersSseService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async updateStatus(
     id: string,
     tenantId: string,
     newStatus: OrderStatus,
-    motivoCancelacion?: string,
-  ): Promise<Order> {
-    const order = await this.orderRepo.findOne({ where: { id, tenantId } });
-    if (!order) throw new NotFoundException('Pedido no encontrado');
+    cancellationReason?: string,
+  ): Promise<OrderResponseDto> {
+    const order = await this.dataSource.transaction(async (manager) => {
+      // pessimistic_write evita dos cambios de estado concurrentes sobre el mismo pedido
+      const locked = await manager
+        .createQueryBuilder(Order, 'o')
+        .setLock('pessimistic_write', undefined, ['o'])
+        .where('o.id = :id AND o.tenantId = :tenantId', { id, tenantId })
+        .getOne();
 
-    // Validar transición
-    const allowed = VALID_TRANSITIONS[order.estado];
-    if (!allowed.includes(newStatus)) {
-      throw new BadRequestException(
-        `Transición inválida: ${order.estado} → ${newStatus}. ` +
-        `Transiciones permitidas: ${allowed.join(', ') || 'ninguna (estado terminal)'}`,
-      );
+      if (!locked) throw new NotFoundException('Pedido no encontrado');
+
+      // Validar transición contra el mapa
+      const allowed = VALID_TRANSITIONS[locked.status];
+      if (!allowed.includes(newStatus)) {
+        throw new BadRequestException(
+          `Transición inválida: ${locked.status} → ${newStatus}`,
+        );
+      }
+
+      locked.status = newStatus;
+      // cancellationReason se persiste SOLO si newStatus === CANCELADO
+      locked.cancellationReason =
+        newStatus === OrderStatus.CANCELADO ? (cancellationReason ?? null) : null;
+
+      return manager.save(locked);
+    });
+
+    // Notificar SSE recién después del commit
+    this.sseService.emit(order.trackingUuid, order.status);
+    if (TERMINAL_STATES.includes(order.status)) {
+      this.sseService.close(order.trackingUuid);
     }
 
-    // Motivo de cancelación obligatorio si el nuevo estado es CANCELADO
-    if (newStatus === OrderStatus.CANCELADO && motivoCancelacion) {
-      order.motivoCancelacion = motivoCancelacion;
-    }
-
-    order.estado = newStatus;
-    return this.orderRepo.save(order);
+    return this.toResponse(order);
   }
 }
 ```
+
+- `cancellationReason` se persiste **únicamente** cuando `newStatus === OrderStatus.CANCELADO` (y puede venir `undefined`, en cuyo caso queda `null`). En cualquier otro estado se fuerza a `null`.
+- Mensaje de error real: `` `Transición inválida: ${locked.status} → ${newStatus}` `` (`BadRequestException`).
+- Pedido inexistente o de otro tenant: `NotFoundException('Pedido no encontrado')` — el `where` incluye siempre `tenantId`.
 
 ---
 
@@ -98,12 +118,12 @@ import { OrderStatus } from '../../../common/enums/order-status.enum';
 
 export class UpdateOrderStatusDto {
   @IsEnum(OrderStatus)
-  estado: OrderStatus;
+  status: OrderStatus;
 
   @IsOptional()
   @IsString()
   @MaxLength(255)
-  motivoCancelacion?: string;
+  cancellationReason?: string;
 }
 ```
 
@@ -111,16 +131,23 @@ export class UpdateOrderStatusDto {
 
 ## 5. Endpoint en el controlador
 
+El controlador está montado sobre `@Controller(':tenant/orders')`, así que la ruta completa es `PATCH /:tenant/orders/:id/status`. Es una **ruta protegida**: solo el dueño (admin) puede cambiar estados, y el `tenantId` sale **solo** del JWT vía `@TenantId()` (nunca del slug de la URL ni del body).
+
 ```typescript
 // Solo el dueño (admin) puede cambiar estados
-@UseGuards(JwtAuthGuard)
 @Patch(':id/status')
+@UseGuards(JwtAuthGuard)
 updateStatus(
   @Param('id', ParseUUIDPipe) id: string,
   @TenantId() tenantId: string,
   @Body() dto: UpdateOrderStatusDto,
 ) {
-  return this.ordersService.updateStatus(id, tenantId, dto.estado, dto.motivoCancelacion);
+  return this.ordersService.updateStatus(
+    id,
+    tenantId,
+    dto.status,
+    dto.cancellationReason,
+  );
 }
 ```
 
@@ -130,9 +157,10 @@ updateStatus(
 
 - [ ] ¿El mapa `VALID_TRANSITIONS` cubre los 6 estados y los 3 terminales tienen array vacío?
 - [ ] ¿El servicio lanza excepción si la transición no está en el mapa?
-- [ ] ¿`motivoCancelacion` solo se persiste cuando `newStatus === CANCELADO`?
+- [ ] ¿`cancellationReason` solo se persiste cuando `newStatus === CANCELADO` (y queda `null` en cualquier otro caso)?
 - [ ] ¿El DTO valida con `@IsEnum(OrderStatus)` y no acepta strings libres?
-- [ ] ¿La ruta de cambio de estado tiene `@UseGuards(JwtAuthGuard)`?
+- [ ] ¿La ruta `PATCH :id/status` tiene `@UseGuards(JwtAuthGuard)` y el `tenantId` sale del JWT?
+- [ ] ¿El SSE emite por `trackingUuid` (no por `id` ni por `order_id`)?
 - [ ] ¿Al llegar a estado terminal se dispara el cierre del SSE? (ver sección SSE en documentación)
 
 ---
@@ -156,25 +184,57 @@ ENTREGADO ✓ (terminal)
 
 ### Tabla de acciones disponibles por estado (de la documentación V3)
 
-| Estado actual | Acciones disponibles para el dueño |
-|---|---|
-| `PENDIENTE` | Confirmar pedido → `EN_PREPARACION`, Cancelar pedido → `CANCELADO` |
-| `EN_PREPARACION` | Completar preparación → `LISTO`, Cancelar pedido → `CANCELADO` |
-| `LISTO` | Marcar como Entregado → `ENTREGADO`, Marcar como No Retirado → `NO_RETIRADO` |
-| `ENTREGADO` | — (estado terminal) |
-| `CANCELADO` | — (estado terminal) |
-| `NO_RETIRADO` | — (estado terminal) |
+Los métodos de dominio son los del diagrama de clases (`/documentation/diagrams.md`). **No existen endpoints separados por acción**: un único `PATCH :id/status` los cubre a todos, validando el `status` recibido contra `VALID_TRANSITIONS`.
+
+| Método de dominio | Estado actual | Estado destino | Endpoint |
+|---|---|---|---|
+| `confirmOrder()` | `PENDIENTE` | `EN_PREPARACION` | `PATCH :id/status` con `{ "status": "EN_PREPARACION" }` |
+| `cancelOrder()` | `PENDIENTE` \| `EN_PREPARACION` | `CANCELADO` | `PATCH :id/status` con `{ "status": "CANCELADO", "cancellationReason": "..." }` |
+| `readyOrder()` | `EN_PREPARACION` | `LISTO` | `PATCH :id/status` con `{ "status": "LISTO" }` |
+| `deliverOrder()` | `LISTO` | `ENTREGADO` | `PATCH :id/status` con `{ "status": "ENTREGADO" }` |
+| `markAsNotPickedUp()` | `LISTO` | `NO_RETIRADO` | `PATCH :id/status` con `{ "status": "NO_RETIRADO" }` |
+
+Si el `status` enviado no está en `VALID_TRANSITIONS[order.status]`, el servicio responde `400 Bad Request` con `Transición inválida: <actual> → <solicitado>`.
 
 ### Integración con SSE
 
-Cuando el estado del pedido cambia, el servicio de orders debe emitir el nuevo estado por SSE a todos los clientes conectados al stream de ese pedido (identificado por `uuid_seguimiento`). Cuando el nuevo estado es terminal, la conexión SSE debe cerrarse automáticamente.
+Cuando el `status` del pedido cambia, `updateStatus()` emite el nuevo `status` por SSE a todos los clientes conectados al stream de ese pedido (identificado por `trackingUuid`). Cuando el nuevo `status` es terminal, la conexión SSE se cierra automáticamente.
 
 ```typescript
-// Pseudocódigo de integración en updateStatus()
-await this.orderRepo.save(order);
-this.sseService.emit(order.uuidSeguimiento, order.estado);
-if (TERMINAL_STATES.includes(order.estado)) {
-  this.sseService.close(order.uuidSeguimiento);
+// Pseudocódigo de integración en updateStatus() — luego del commit de la transacción
+this.sseService.emit(order.trackingUuid, order.status);
+if (TERMINAL_STATES.includes(order.status)) {
+  this.sseService.close(order.trackingUuid);
+}
+```
+
+Del lado del consumidor, la ruta es **pública**: `GET /:tenant/orders/:uuid/status-stream` (sin `JwtAuthGuard`, busca por `trackingUuid`). Emite el estado actual al suscribirse y luego cada cambio:
+
+```typescript
+@Sse(':uuid/status-stream')
+statusStream(
+  @Param('uuid', ParseUUIDPipe) uuid: string,
+  @TenantId() tenantId: string,
+): Observable<MessageEvent> {
+  this.sseService.connect(uuid);
+
+  // defer para que la consulta ocurra en el momento de suscripción
+  const initial$ = defer(async () => {
+    const order = await this.ordersService.findByTracking(uuid, tenantId);
+    return order.status;
+  });
+
+  const updates$ = this.sseService.getOrCreate(uuid).asObservable();
+
+  return concat(initial$, updates$).pipe(
+    map((status) => ({ data: status })),
+    // takeWhile(..., true): el estado terminal se emite y después el stream completa
+    takeWhile(
+      (event) => !TERMINAL_STATES.includes(event.data as OrderStatus),
+      true,
+    ),
+    finalize(() => this.sseService.disconnect(uuid)),
+  );
 }
 ```
 
@@ -184,11 +244,11 @@ if (TERMINAL_STATES.includes(order.estado)) {
 - **CU-06** (Cancelar pedido): transición a `CANCELADO` desde `PENDIENTE` o `EN_PREPARACION`, con motivo opcional.
 - **CU-08** (Consultar estado): el cliente ve el stepper visual con el estado actual vía SSE.
 
-### Campo `motivoCancelacion` en la entidad `Order`
+### Campo `cancellationReason` en la entidad `Order`
 
 ```typescript
-@Column({ name: 'motivo_cancelacion', nullable: true })
-motivoCancelacion: string | null;
+@Column({ name: 'cancellation_reason', type: 'varchar', nullable: true })
+cancellationReason: string | null;
 ```
 
-Solo se persiste si `estado === CANCELADO`. Para otros estados siempre es `null`.
+Solo se persiste si `status === CANCELADO`. Para otros estados siempre es `null`.

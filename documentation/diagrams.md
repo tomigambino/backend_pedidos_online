@@ -11,8 +11,8 @@
 classDiagram
 
     class Tenant {
-        +int id
-        +string slug
+        +uuid id
+        +string slug UK
         +string name
         +string logo
         +string banner
@@ -24,10 +24,10 @@ classDiagram
         +string alias
         +string account_holder
         +string bank
-        +string whatsapp_number
+        +string whatsapp
         +string address
         +bool delivery_cost_enabled
-        +float delivery_cost
+        +decimal delivery_cost
         +timestamp created_at
         +timestamp updated_at
 
@@ -38,13 +38,13 @@ classDiagram
     }
 
     class User {
-        +int id
-        +string email
+        +uuid id
+        +uuid tenant_id FK
+        +string email UK
         +string password
         +enum role
         +timestamp created_at
         +timestamp updated_at
-        +timestamp deleted_at
         +Tenant tenant
 
         +login()
@@ -52,8 +52,10 @@ classDiagram
     }
 
     class Category {
-        +int id
+        +uuid id
+        +uuid tenant_id FK
         +string name
+        +bool is_active
         +timestamp created_at
         +timestamp updated_at
         +timestamp deleted_at
@@ -62,15 +64,19 @@ classDiagram
         +createCategory()
         +updateCategory()
         +deleteCategory()
+        +activateCategory()
+        +hideCategory()
     }
 
     class Product {
-        +int id
+        +uuid id
+        +uuid tenant_id FK
+        +uuid category_id FK
         +string name
         +string description
-        +float price
-        +string image
-        +boolean is_active
+        +decimal price
+        +string image_url
+        +bool is_active
         +timestamp created_at
         +timestamp updated_at
         +timestamp deleted_at
@@ -82,21 +88,26 @@ classDiagram
         +deleteProduct()
         +activateProduct()
         +hideProduct()
+        +removeImage()
     }
 
     class Order {
-        +int id
+        +uuid id
+        +uuid tenant_id FK
+        +uuid customer_id FK
+        +uuid delivery_id FK
         +enum status
+        +string tracking_uuid UK
         +string cancellation_reason
-        +float total
-        +string payment_method
-        +boolean store_pickup
+        +decimal total
+        +enum payment_method
+        +enum delivery_type
         +string notes
-        +string tracking_uuid
         +timestamp created_at
+        +timestamp updated_at
         +Tenant tenant
         +Customer customer
-        +OrderItem orderItems
+        +OrderItem items
         +Delivery delivery
 
         +createOrder()
@@ -108,22 +119,25 @@ classDiagram
     }
 
     class Delivery {
-        +int id
+        +uuid id
         +string address
         +string notes
-        +float delivery_fee
+        +decimal delivery_fee
     }
 
     class OrderItem {
-        +int id
+        +uuid id
+        +uuid order_id FK
+        +uuid product_id FK
         +string name
+        +decimal price
         +int quantity
-        +float price
+        +Order order
         +Product product
     }
 
     class Customer {
-        +int id
+        +uuid id
         +string name
         +string phone
         +string address
@@ -132,17 +146,19 @@ classDiagram
     }
 
     class RegularSchedule {
-        +int id
-        +int day_of_week
+        +uuid id
+        +uuid tenant_id FK
+        +smallint day_of_week
         +time opening_time
         +time closing_time
         +Tenant tenant
     }
 
     class AvailabilityException {
-        +int id
+        +uuid id
+        +uuid tenant_id FK
         +date date
-        +boolean is_open
+        +bool is_open
         +time opening_time
         +time closing_time
         +string reason
@@ -159,7 +175,7 @@ classDiagram
 
     Order --> "1" Tenant
     Order --> "1..*" OrderItem
-    OrderItem --> "1" Product
+    OrderItem --> "0..1" Product
 
     Order --> "1" Customer
     Order --> "0..1" Delivery
@@ -168,6 +184,15 @@ classDiagram
     AvailabilityException --> "1" Tenant
 ```
 
+> **Todas las PK/FK son `UUID`** (`uuid PRIMARY KEY DEFAULT uuid_generate_v4()`). No hay ids incrementales.
+> Los importes (`price`, `total`, `delivery_fee`, `delivery_cost`) son `decimal(10,2)`.
+
+### Agregado `Order`
+
+`Order` es la raíz de su agregado. `Customer`, `Delivery` y `OrderItem` son **entidades internas del agregado**: viven en `src/modules/orders/entities/` y **no tienen `tenant_id` propio**. Se aíslan a través de `order.tenant_id`.
+
+`Customer` y `Delivery` son snapshots del momento del pedido (datos del cliente y datos de envío + `delivery_fee` copiado del tenant). `OrderItem` es el snapshot de `name` y `price` del producto.
+
 ---
 
 ## Diagrama Entidad-Relación
@@ -175,117 +200,116 @@ classDiagram
 ```mermaid
 erDiagram
     Tenant {
-        int id PK
-        string slug
+        uuid id PK
+        string slug UK
         string name
         string logo
         string banner
         string primary_color
-        string secondary_color
         string description
         bool is_open
         string cbu
         string alias
         string account_holder
         string bank
-        string whatsapp_number
+        string whatsapp
         string address
         bool delivery_cost_enabled
-        float delivery_cost
+        decimal delivery_cost
         timestamp created_at
         timestamp updated_at
     }
 
     User {
-        int id PK
-        string email
+        uuid id PK
+        string email UK
         string password
         enum role
         timestamp created_at
         timestamp updated_at
-        timestamp deleted_at
-        int tenant_id FK
+        uuid tenant_id FK
     }
 
     Category {
-        int id PK
+        uuid id PK
         string name
+        bool is_active
         timestamp created_at
         timestamp updated_at
         timestamp deleted_at
-        int tenant_id FK
+        uuid tenant_id FK
     }
 
     Product {
-        int id PK
+        uuid id PK
         string name
         string description
-        float price
-        string image
-        boolean is_active
+        decimal price
+        string image_url
+        bool is_active
         timestamp created_at
         timestamp updated_at
         timestamp deleted_at
-        int category_id FK
-        int tenant_id FK
+        uuid category_id FK
+        uuid tenant_id FK
     }
 
     Order {
-        int id PK
+        uuid id PK
         enum status
+        string tracking_uuid UK
         string cancellation_reason
-        float total
-        string payment_method
-        boolean store_pickup
+        decimal total
+        enum payment_method
+        enum delivery_type
         string notes
-        string tracking_uuid
-        timestamp updated_at
         timestamp created_at
-        int tenant_id FK
-        int customer_id FK
-        int delivery_id FK
+        timestamp updated_at
+        uuid tenant_id FK
+        uuid customer_id FK
+        uuid delivery_id FK
     }
 
     Delivery {
-        int id PK
+        uuid id PK
         string address
         string notes
-        float delivery_fee
+        decimal delivery_fee
     }
 
     OrderItem {
-        int id PK
+        uuid id PK
         string name
+        decimal price
         int quantity
-        float price
-        int order_id FK
-        int product_id FK
+        uuid order_id FK
+        uuid product_id FK
     }
 
     Customer {
-        int id PK
+        uuid id PK
         string name
         string phone
         string address
     }
 
     RegularSchedule {
-        int id PK
-        int day_of_week
+        uuid id PK
+        smallint day_of_week
         time opening_time
         time closing_time
-        int tenant_id FK
+        uuid tenant_id FK
     }
 
     AvailabilityException {
-        int id PK
+        uuid id PK
         date date
-        boolean is_open
+        bool is_open
         time opening_time
         time closing_time
         string reason
         timestamp created_at
-        int tenant_id FK
+        uuid tenant_id FK
     }
 
     Tenant ||--o{ User : "has"
@@ -300,6 +324,11 @@ erDiagram
     Customer ||--o{ Order : "places"
     Order ||--o| Delivery : "requires"
 ```
+
+> **Nombres reales de tabla:** `tenants`, `users`, `categories`, `products`, `orders`, `order_items`, `customers`, `deliveries`, `regular_schedules`, `availability_exceptions`.
+> **Soft delete:** solo `products` y `categories` tienen `deleted_at`. `users` **no** tiene `deleted_at`.
+> **Enums:** `orders.status` → `OrderStatus`; `orders.payment_method` → `PaymentMethod`; `orders.delivery_type` → `DeliveryType`; `users.role` → `UserRole`.
+> `OrderItem`, `Customer` y `Delivery` **no** tienen `tenant_id`: se aíslan vía `orders.tenant_id`.
 
 ---
 
@@ -355,11 +384,11 @@ stateDiagram-v2
 
 ### Cliente
 
-| Caso de uso | Descripción |
+| Caso de uso | Endpoints |
 |---|---|
-| Consultar menú | Ver productos organizados por categoría del negocio |
+| Consultar menú | `GET /:tenant/categories` + `GET /:tenant/products` (cliente) |
 | Registrar pedido | Armar carrito y completar checkout (CU-01) |
-| Consultar estado de pedido | Ver stepper de estados en `/pedido/:uuid` vía SSE (CU-08) |
+| Consultar estado de pedido | Ver stepper de estados vía SSE (CU-08) |
 | Seguir pedido por WhatsApp | Agregar teléfono para recibir notificaciones (CU-07) |
 
 ---
@@ -368,49 +397,63 @@ stateDiagram-v2
 
 **Sesión**
 
-| Caso de uso | Descripción |
+| Caso de uso | Endpoints |
 |---|---|
 | Iniciar sesión | Login con email y contraseña, recibe JWT con `userId` y `tenantId` |
-| Registrarse | Incluye: registrar negocio (nombre, apariencia, datos bancarios) |
+| Registrarse | Registra negocio + usuario owner; el resto de la configuración se completa luego |
+| Consultar perfil | `GET /auth/me` devuelve `email`, `tenantSlug`, `tenantName` |
+| Cerrar sesión | Descartar el JWT en el cliente (no hay endpoint de revocación) |
 
 **Pedidos**
 
-| Caso de uso | Descripción |
+| Caso de uso | Endpoints |
 |---|---|
-| Consultar pedidos recibidos | Lista de pedidos con polling cada 20s |
-| Registrar pedido manual | Por si el pedido llega por otra fuente (teléfono, etc.) |
+| Consultar pedidos recibidos | Lista paginada con polling cada 20s |
+| Filtrar y contar pedidos | `GET /:tenant/orders` acepta `status`, `search`, `dateFrom`, `dateTo`, `page`, `limit` |
+| Ver contadores por estado | `GET /:tenant/orders/admin/counts` |
+| Registrar pedido manual | **PENDIENTE** — no existe endpoint en el código |
 | Confirmar pedido | `PENDIENTE` → `EN_PREPARACION` |
 | Completar preparación | `EN_PREPARACION` → `LISTO` |
 | Entregar pedido | `LISTO` → `ENTREGADO` |
 | Marcar como no retirado | `LISTO` → `NO_RETIRADO` |
 | Cancelar pedido | `PENDIENTE` o `EN_PREPARACION` → `CANCELADO` |
+| Consultar detalle de pedido | `GET /:tenant/orders/:id` |
 | Notificar cliente por WhatsApp | Genera link pre-armado al cambiar estado (CU-06) |
 
 **Productos**
 
-| Caso de uso | Descripción |
+| Caso de uso | Endpoints |
 |---|---|
-| Consultar menú | Ver productos del negocio en el panel admin |
+| Consultar productos | `GET /:tenant/products/admin` |
 | Crear producto | Con foto, descripción y precio (CU-02) |
-| Modificar producto | Editar campos del producto |
+| Modificar producto | Editar campos del producto y/o reemplazar la imagen |
 | Eliminar producto | Soft delete — preserva historial de pedidos |
 | Activar producto | Volver a mostrar un producto oculto |
 | Ocultar producto | Quitar del menú público sin eliminar (CU-03) |
+| Quitar imagen del producto | `DELETE /:tenant/products/:id/image` pone `imageUrl` en `null` y borra el archivo |
 
 **Categorías**
 
-| Caso de uso | Descripción |
+| Caso de uso | Endpoints |
 |---|---|
-| Consultar categorías | Ver categorías del negocio |
+| Consultar categorías | `GET /:tenant/categories/admin` |
 | Crear categoría | Agregar nueva categoría al menú |
 | Modificar categoría | Editar nombre de categoría |
 | Eliminar categoría | Soft delete de la categoría |
+| Activar categoría | `PATCH /:tenant/categories/:id/activate` |
+| Ocultar categoría | `PATCH /:tenant/categories/:id/hide` |
 
 **Configuración del negocio**
 
-| Caso de uso | Descripción |
+| Caso de uso | Endpoints |
 |---|---|
-| Modificar datos de negocio | Nombre, logo, colores, WhatsApp, datos bancarios (CU-04) |
-| Registrar cierre temporal | Deshabilita el carrito sin bajar el sitio (CU-05) |
-| Registrar apertura de local | Reactiva el carrito |
-| Consultar estadísticas básicas | Resumen del día: pedidos, facturado, pendientes |
+| Modificar datos de negocio | `PATCH /:tenant/admin/tenants` — nombre, colores, WhatsApp, dirección, datos bancarios, logo y banner (CU-04) |
+| Quitar logo | `DELETE /:tenant/admin/tenants/logo` |
+| Quitar banner | `DELETE /:tenant/admin/tenants/banner` |
+| Registrar cierre temporal | `isOpen: false` deshabilita el carrito sin bajar el sitio (CU-05) |
+| Registrar apertura de local | `isOpen: true` reactiva el carrito |
+| Consultar disponibilidad pública | `GET /:tenant/availability` (config + horarios + excepciones) |
+| Gestionar horario semanal | `GET/POST /:tenant/admin/schedule`, `PATCH/DELETE /:tenant/admin/schedule/:id` |
+| Gestionar excepciones de fecha | `GET/POST /:tenant/admin/exceptions`, `PATCH/DELETE /:tenant/admin/exceptions/:id` |
+| Configurar costo de envío | `deliveryCostEnabled` + `deliveryCost` (se copia a `Delivery.deliveryFee` al crear el pedido) |
+| Consultar estadísticas básicas | `GET /:tenant/orders/admin/stats` — resumen del día: pedidos, facturado, pendientes |

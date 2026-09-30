@@ -1,6 +1,6 @@
 # AGENTS.md — Sistema de Pedidos Online (Backend NestJS)
-> **Fuente de verdad absoluta:** `/documentation/documentation_sistema_pedidos_online_V3.md`
-> **Raíz de trabajo:** `Backend pedidos online/` — OpenCode debe abrirse siempre desde aquí.
+> **Fuente de verdad absoluta:** `/documentation/documentation_sistema_pedidos_online_V3.md` (V3.4)
+> **Raíz de trabajo:** la raíz del repo. El backend NestJS vive en `backend_pedidos/` (código en `backend_pedidos/src/`), la documentación en `documentation/`, estas instrucciones en `agents/AGENTS.md` y las skills en `skills/`.
 
 ---
 
@@ -9,7 +9,7 @@
 Antes de responder cualquier petición, el agente activo debe leer en este orden:
 
 1. Este archivo (`AGENTS.md`) — roles, protocolo y restricciones.
-2. La sección relevante de `/documentation/documentation_sistema_pedidos_online_V3.md` — reglas de negocio.
+2. La sección relevante de `/documentation/documentation_sistema_pedidos_online_V3.md` (V3.4) — reglas de negocio.
 3. `/documentation/diagrams.md` — diagramas de clases, ER, estados y casos de uso.
 4. Las Skills de `/skills/` que apliquen a la tarea.
 
@@ -23,6 +23,7 @@ Antes de responder cualquier petición, el agente activo debe leer en este orden
 - **Cuándo se activa:** Al iniciar un módulo nuevo o al agregar archivos al proyecto.
 - **Responsabilidades:**
   - Validar que la estructura de carpetas respete `src/modules/<modulo>/{entities,dto,*.controller.ts,*.service.ts,*.module.ts}`.
+  - Un módulo puede agrupar **varias entidades** en su `entities/` cuando forman parte del mismo agregado. Caso vigente: `src/modules/orders/entities/` contiene `Order`, `OrderItem`, `Customer` y `Delivery` — cuatro entidades del agregado `Order`, no cuatro módulos.
   - Asegurar que nada de lógica de dominio caiga en `common/` ni en `core/`.
   - Aprobar el listado de archivos del Plan de Acción antes de que otro agente escriba.
 - **Checklist de validación:**
@@ -36,15 +37,16 @@ Antes de responder cualquier petición, el agente activo debe leer en este orden
 - **Cuándo se activa:** Al crear o modificar entidades, migraciones o repositorios.
 - **Responsabilidades:**
   - Escribir entidades TypeORM que reflejen fielmente el modelo de datos de la documentación.
-  - Aplicar `tenant-isolation` en **todos** los repositorios: todo `find`, `findOne` y `query` debe incluir `where: { tenant_id }`.
+  - Aplicar `tenant-isolation` en **todos** los repositorios: todo `find`, `findOne` y `query` debe filtrar por `tenantId`.
   - Aplicar `soft-delete` con `@DeleteDateColumn() deletedAt` **exclusivamente** en `Product` y `Category`.
-  - Guardar snapshot de precio Y nombre en `order_items` (nunca referenciar el nombre del producto en vivo).
+  - Guardar snapshot de precio Y nombre en `order_items` (tabla real) — nunca referenciar el nombre del producto en vivo.
 - **Checklist de validación:**
-  - [ ] ¿Todas las entidades con `tenant_id` lo tienen como `@Column()` indexado?
+  - [ ] ¿Las entidades Tenant-scoped (`User`, `Category`, `Product`, `Order`, `RegularSchedule`, `AvailabilityException`) tienen `tenantId` como `@Column()` indexado?
+  - [ ] ¿`OrderItem`, `Customer` y `Delivery` NO tienen `tenantId` propio? Se aíslan vía `order.tenantId`: toda consulta a ellas debe pasar por un `Order` filtrado por `tenantId`.
   - [ ] ¿`Product` y `Category` tienen `@DeleteDateColumn()`? ¿Solo ellos?
-  - [ ] ¿`order_items` tiene `precio` y `nombre` como columnas propias (snapshot)?
-  - [ ] ¿`dia_semana` en `horario_regular` es `SMALLINT` con rango 1–7 (ISO 8601)?
-  - [ ] ¿La entidad `delivery` tiene FK a `orders` y guarda `costo_envio` al momento del pedido?
+  - [ ] ¿`order_items` (tabla real) tiene `price` y `name` como columnas propias (snapshot)?
+  - [ ] ¿`dayOfWeek` en `RegularSchedule` (tabla real `regular_schedules`) es `SMALLINT` con rango 1–7 (ISO 8601)?
+  - [ ] ¿La entidad `Delivery` tiene FK a `Order` y guarda `deliveryFee` al momento del pedido?
 
 ---
 
@@ -53,13 +55,13 @@ Antes de responder cualquier petición, el agente activo debe leer en este orden
 - **Responsabilidades:**
   - Implementar **exclusivamente** los casos de uso definidos en `/documentation/documentation_sistema_pedidos_online_V3.md` y en `/documentation/diagrams.md`. Cualquier funcionalidad que no aparezca en esos documentos es fuera del MVP y no debe codificarse.
   - Usar `class-validator` + `class-transformer` en todos los DTOs. Sin validación, sin DTO.
-  - El `tenant_id` en rutas protegidas **siempre** se extrae del JWT, nunca del body ni de query params.
-  - El `tenant_id` en rutas públicas se extrae del middleware de tenant (por URL/slug).
+  - El `tenantId` en rutas protegidas **siempre** se extrae del JWT, nunca del body ni de query params.
+  - El `tenantId` en rutas públicas se extrae del middleware de tenant (por URL/slug).
   - **Restricción dura:** No inventar lógica, campos ni endpoints que no estén en el MVP documentado.
 - **Checklist de validación:**
   - [ ] ¿Las rutas públicas no tienen `JwtAuthGuard`?
   - [ ] ¿Las rutas de `/admin` tienen `@UseGuards(JwtAuthGuard)`?
-  - [ ] ¿Ningún DTO acepta `tenant_id` como campo de entrada?
+  - [ ] ¿Ningún DTO acepta `tenantId` como campo de entrada?
   - [ ] ¿Los servicios inyectan repositorios y no hacen queries de infraestructura directamente?
   - [ ] ¿La máquina de estados de pedidos respeta la matriz? (ver sección 3)
 
@@ -72,10 +74,10 @@ Antes de responder cualquier petición, el agente activo debe leer en este orden
   - Controlar reglas críticas de negocio que los otros agentes pueden pasar por alto.
   - Revisar que no haya vulnerabilidades de aislamiento entre tenants.
 - **Checklist de validación:**
-  - [ ] ¿`dia_semana` usa convención 1=Lunes, 7=Domingo? ¿Se convierte correctamente desde `Date.getDay()` (JS usa 0=Domingo)?
+  - [ ] ¿`dayOfWeek` usa convención 1=Lunes, 7=Domingo? ¿Se convierte correctamente desde `Date.getDay()` (JS usa 0=Domingo)?
   - [ ] ¿Los estados terminales (`Entregado`, `Cancelado`, `No Retirado`) no tienen transiciones de salida?
   - [ ] ¿El SSE se cierra automáticamente cuando el pedido llega a estado terminal?
-  - [ ] ¿`delivery_cost` se copia a la entidad `delivery` al momento del pedido, no se lee en vivo del tenant?
+  - [ ] ¿`deliveryFee` se copia a la entidad `Delivery` al momento del pedido, no se lee en vivo del tenant?
   - [ ] ¿Un dueño no puede acceder a datos de otro tenant aunque manipule el JWT?
 
 ---
@@ -145,29 +147,38 @@ PENDIENTE ──→ EN_PREPARACION ──→ LISTO ──→ ENTREGADO ✓
 - `NO_RETIRADO` solo es accesible desde `LISTO`.
 
 ### Aislamiento de tenants
-- Rutas públicas: `tenant_id` desde middleware (slug de URL).
-- Rutas privadas: `tenant_id` desde payload del JWT.
-- **Nunca** aceptar `tenant_id` en body, query params o headers de rutas protegidas.
+- **Todas** las rutas llevan el slug `/:tenant` en la URL. Únicas excepciones: `GET /`, `POST /auth/register`, `POST /auth/login` y `GET /auth/me`.
+- Rutas públicas: `tenantId` desde middleware (slug de URL).
+- Rutas privadas: `tenantId` desde payload del JWT. Aunque el slug siga en la URL, el `tenantId` efectivo se toma **solo** del JWT (`@TenantId()` prioriza `request.user.tenantId` sobre el del middleware).
+- El JWT puede llegar por header `Authorization: Bearer <token>` o por cookie HttpOnly `access_token`.
+- **Nunca** aceptar `tenantId` en body, query params o headers de rutas protegidas.
 
 ### Horarios — ISO 8601
-- `dia_semana`: `SMALLINT`, `1 = Lunes`, `7 = Domingo`.
+- `dayOfWeek`: `SMALLINT`, `1 = Lunes`, `7 = Domingo`.
 - JS `Date.getDay()` retorna `0 = Domingo`. La conversión es: `(date.getDay() + 6) % 7 + 1`.
-- Si `dia_semana` no tiene filas en `horario_regular`, el local **no abre ese día**.
-- `ExcepcionDisponibilidad` con `esta_abierto = false`: `hora_apertura` y `hora_cierre` deben ser `null`.
+- Si `dayOfWeek` no tiene filas en `regular_schedules`, el local **no abre ese día**.
+- `AvailabilityException` con `isOpen = false`: `openingTime` y `closingTime` deben ser `null`.
 
 ### Soft Delete
 - `@DeleteDateColumn()` **solo** en `Product` y `Category`.
 - Los registros con `deletedAt != null` no deben aparecer en **ninguna** consulta pública.
+- `Category` y `Product` además tienen `isActive` (ocultar / activar), que es **independiente** del soft delete: `isActive = false` oculta sin borrar, y el registro se puede volver a activar.
+- Un producto no se lista en el catálogo público si está oculto (`isActive = false`), o si su categoría está oculta (`category.isActive = false`) o borrada (`category.deletedAt != null`).
 - Los `order_items` históricos **no se tocan** aunque el producto sea eliminado.
 
 ### Snapshots en order_items
-- Guardar `nombre` y `precio` del producto **al momento del pedido**.
+- Guardar `name` y `price` del producto **al momento del pedido**.
 - Nunca leer el nombre o precio del producto en vivo para mostrar un pedido histórico.
 
+### Convención de nombres
+- **Código, campos y endpoints en inglés**: `status`, `cancellationReason`, `isActive`, `name`, `price`, `tenantId`, `dayOfWeek`, `trackingUuid`.
+- Los **valores** de enums de estados y pagos siguen en español: `PENDIENTE`, `EN_PREPARACION`, `LISTO`, `ENTREGADO`, `CANCELADO`, `NO_RETIRADO`, `EFECTIVO`, etc.
+- La conversión a ISO del día se mantiene: `(date.getDay() + 6) % 7 + 1`.
+
 ### SSE — Seguimiento de pedido
-- La conexión SSE se abre en `GET /orders/:uuid/status-stream`.
+- La conexión SSE se abre en `GET /:tenant/orders/:uuid/status-stream`, buscando el pedido por `trackingUuid`.
 - Se cierra automáticamente al llegar a estado terminal (`ENTREGADO`, `CANCELADO`, `NO_RETIRADO`).
-- El cliente no necesita autenticación para esta ruta (es pública por UUID).
+- El cliente no necesita autenticación para esta ruta (es pública por `trackingUuid`).
 
 ---
 
@@ -175,10 +186,10 @@ PENDIENTE ──→ EN_PREPARACION ──→ LISTO ──→ ENTREGADO ✓
 
 | Skill | Ruta | Cuándo usarla |
 |---|---|---|
-| `tenant-isolation` | `/skills/tenant-isolation/` | Toda entidad o repositorio con `tenant_id` |
-| `soft-delete` | `/skills/soft-delete/` | Entidades `Product` y `Category` |
-| `order-state-machine` | `/skills/order-state-machine/` | Servicio y DTOs de `orders` |
-| `snapshot-order-items` | `/skills/snapshot-order-items/` | Entidad y servicio de `order-items` |
+| `tenant-isolation` | `skills/tenant-isolation/SKILL-tenant-isolation.md` | Toda entidad o repositorio con `tenantId` |
+| `soft-delete` | `skills/soft-delete/SKILL-soft-delete.md` | Entidades `Product` y `Category` |
+| `order-state-machine` | `skills/order-state-machine/SKILL-order-state-machine.md` | Servicio y DTOs de `orders` |
+| `snapshot-order-items` | `skills/snapshot-order-items/SKILL-snapshot-order-items.md` | Entidad y servicio de `order-items` |
 
 ---
 
@@ -187,23 +198,29 @@ PENDIENTE ──→ EN_PREPARACION ──→ LISTO ──→ ENTREGADO ✓
 | Módulo | Ruta | Entidades incluidas | Estado |
 |---|---|---|---|
 | Auth | `src/modules/auth/` | `User` | ✅ Listo |
-| Tenants | `src/modules/tenants/` | `Tenant`, `HorarioRegular`, `ExcepcionDisponibilidad` | ✅ Listo |
+| Tenants | `src/modules/tenants/` | `Tenant`, `RegularSchedule`, `AvailabilityException` | ✅ Listo |
 | Categories | `src/modules/categories/` | `Category` | ✅ Listo |
 | Products | `src/modules/products/` | `Product` | ✅ Listo |
-| Orders | `src/modules/orders/` | `Order` | ✅ Listo |
-| Order Items | `src/modules/order-items/` | `OrderItem` | ✅ Listo |
-| Customers | `src/modules/customers/` | `Customer` | ✅ Listo |
-| Deliveries | `src/modules/deliveries/` | `Delivery` | ✅ Listo |
+| Orders | `src/modules/orders/` | `Order`, `OrderItem`, `Customer`, `Delivery` | ✅ Listo |
 | Core / Tenant MW | `src/core/tenant/` | — | ✅ Listo |
 
 **Notas de agrupación:**
-- `HorarioRegular` y `ExcepcionDisponibilidad` viven dentro de `tenants/` porque son configuración del negocio, no entidades de dominio independientes.
-- `Customer` es un snapshot de auditoría (no un usuario con sesión). Módulo propio para mantener separación de responsabilidades.
-- `Delivery` guarda los datos de envío al momento del pedido. Módulo propio porque tiene su propio ciclo de vida dentro de un pedido.
+- `RegularSchedule` y `AvailabilityException` viven dentro de `tenants/` porque son configuración del negocio, no entidades de dominio independientes.
+- `Customer` es un snapshot de auditoría (no un usuario con sesión) y vive como entidad interna de `orders/`: se crea junto al pedido y no tiene módulo propio.
+- `Delivery` guarda los datos de envío al momento del pedido y vive como entidad interna de `orders/`: el `deliveryFee` se **copia** desde el tenant al crear el pedido, no se lee en vivo.
+- `OrderItem` es el snapshot de `name` y `price` del producto y vive como entidad interna de `orders/`: un pedido histórico nunca lee el producto en vivo.
 - `User` vive en `auth/` porque su único rol en el MVP es autenticar al dueño.
 
 > Actualizar el estado a `🔄 En progreso` o `✅ Listo` a medida que se avanza.
 
 ---
 
-*AGENTS.md — v1.2 | Proyecto: Backend pedidos online | Stack: NestJS + TypeORM + PostgreSQL*
+## 6. Pendientes del MVP
+
+- **Registrar pedido manual desde el panel admin** — caso de uso del diagrama de casos de uso (`/documentation/diagrams.md` → Owner → Pedidos): *"Registrar pedido manual — por si el pedido llega por otra fuente (teléfono, etc.)"*. **Aún sin implementar.** Se abordará en iteraciones chicas, **backend primero y frontend después**.
+
+> El roadmap completo pre-despliegue irá en `ROADMAP.md` (iteración 4). Acá solo se referencian los pendientes conocidos.
+
+---
+
+*AGENTS.md — v1.4 | Proyecto: Backend pedidos online | Stack: NestJS + TypeORM + PostgreSQL*
