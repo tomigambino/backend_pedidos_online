@@ -1,6 +1,6 @@
 # Documentación MVP Sistema de Pedidos Online
 
-> **Versión:** 3.4
+> **Versión:** 3.5
 
 ---
 
@@ -36,7 +36,9 @@ Utilizaremos una arquitectura de tres capas:
 - Capa de Servicios
 - Capa de Acceso a Datos
 
-### Estructura de carpetas (backend)
+### Estructura de carpetas
+
+La estructura de carpetas del frontend se documenta en [`documentation/FRONTEND.md`](./FRONTEND.md). El backend usa una arquitectura de tres capas: controladores, servicios y acceso a datos.
 
 ```
 src
@@ -115,7 +117,7 @@ Se eligió Cloudinary sobre alternativas como Supabase Storage por los siguiente
 
 ## 3. Modelo Multi-Tenant
 
-Cada negocio que contrate el sistema tiene su propio **tenant**, identificado por un subdominio o ruta única:
+Cada negocio que contrate el sistema tiene su propio **tenant**, identificado por un **slug único dentro de una misma ruta** (no por subdominio):
 
 ```
 tuapp.com/donpepe     →  Local Don Pepe Burger
@@ -141,12 +143,14 @@ Para el **apartado de información privada** de la administración de negocios, 
 
 ### Flujo de autenticación del dueño
 
-1. El dueño ingresa email y contraseña en `/admin`
-2. El backend valida las credenciales y además verifica que ese usuario tenga acceso al tenant del subdominio actual
-3. Si es válido, devuelve un JWT que incluye el `userId` y el `tenantId`
-4. Todas las requests siguientes incluyen ese JWT, y el backend usa el `tenantId` del token para filtrar los datos
+1. El dueño ingresa email y contraseña en `/admin/login`
+2. El backend valida las credenciales y devuelve un JWT que incluye el `userId` y el `tenantId`
+3. El token se entrega en una **cookie HttpOnly** (`access_token`) y también puede enviarse en el header `Authorization: Bearer <token>`
+4. Todas las requests siguientes se autentican con ese token, y el backend usa el `tenantId` del token para filtrar los datos
 
 > **⚠️ Regla de seguridad crítica:** En ningún caso el backend acepta un `tenant_id` enviado manualmente en el body o parámetros de la request para operaciones protegidas. El token es la única fuente válida.
+>
+> **El login NO valida el subdominio/slug.** No hay ningún check que compare el slug de la URL con el `tenantId` del token: el panel de administración no incluye el slug en la URL y el `tenant_id` se toma exclusivamente de la sesión (JWT).
 
 ---
 
@@ -197,16 +201,20 @@ Es la parte que ve el cliente final al entrar a `tuapp.com/donpepe`. No requiere
 - Nombre (obligatorio)
 - Tipo de entrega: retiro en local o envío a domicilio (obligatorio)
 - Dirección (obligatorio solo si elige envío a domicilio)
-- Teléfono (**opcional** — se puede agregar después desde la página de seguimiento para recibir actualizaciones por WhatsApp)
-- Método de pago: efectivo o transferencia (obligatorio)
+- Teléfono (**obligatorio** — se usa para el contacto por WhatsApp)
+- Método de pago: efectivo, transferencia o **tarjeta de débito** (obligatorio)
 
 > **Aclaración sobre el costo del envío:** Si el dueño tiene activado el costo de envío fijo, el checkout lo suma al total y lo muestra desglosado: `Subtotal: $X + Envío: $Y = Total: $Z`. Si el dueño tiene el costo de envío desactivado, se muestra el subtotal con el siguiente aviso: *"El costo de envío no está incluido en este total y se coordina directamente con el local."*
 
-**Confirmación:** Pantalla de "Tu pedido fue enviado" con una redirección al apartado de seguimiento con el número de pedido. Si el cliente no dejó su teléfono, se muestra el botón "Recibir actualizaciones por WhatsApp" para ingresarlo en ese momento. El UUID del pedido se guarda automáticamente en el `localStorage` del dispositivo.
+**Datos bancarios en el checkout:** cuando el cliente elige **transferencia**, el checkout muestra en pantalla los datos bancarios del negocio (CBU, alias, banco y titular) para que pueda realizar la transferencia desde su banco.
+
+**Confirmación:** No existe una pantalla separada de confirmación. Al registrar el pedido, el backend devuelve el UUID y el frontend **redirige directamente a la página de seguimiento** (`tuapp.com/donpepe/pedido/[uuid]`). El UUID **no** se guarda en `localStorage`.
+
+> **⚠️ NO IMPLEMENTADO — Banner de pedido activo:** el sistema **no** guarda el UUID en `localStorage` bajo la clave `pedido_activo_{tenantSlug}` ni muestra el banner *"Tenés un pedido en curso → Ver estado"* en el menú público. No existe ninguna lectura ni escritura de esa clave en el frontend. Ver [Sección 6 — Sesión del Cliente](#sesión-del-cliente-localstorage) y `PENDING.md`.
 
 ### 5.2 Panel de Administración (vista del dueño)
 
-Accesible desde `tuapp.com/donpepe/admin`. Requiere login con usuario y contraseña.
+Accesible desde `/admin` (ruta global, **sin slug ni subdominio**). Requiere login con usuario y contraseña.
 
 **Dashboard:** Resumen del día (pedidos recibidos, total facturado, pedidos pendientes).
 
@@ -224,89 +232,104 @@ Accesible desde `tuapp.com/donpepe/admin`. Requiere login con usuario y contrase
 
 #### Estándar adoptado: ISO 8601
 
-`dia_semana` es un `SMALLINT` donde **1 = Lunes** y **7 = Domingo**. Esta convención es explícita en toda la base de datos y diferente al estándar de JavaScript (`Date.getDay()`, donde 0 = Domingo). Cualquier conversión desde objetos `Date` de JS debe tener esto en cuenta.
+`day_of_week` es un `SMALLINT` donde **1 = Lunes** y **7 = Domingo**. Esta convención es explícita en toda la base de datos y diferente al estándar de JavaScript (`Date.getDay()`, donde 0 = Domingo). Cualquier conversión desde objetos `Date` de JS debe tener esto en cuenta.
 
 #### Entidades y atributos
 
-**HorarioRegular**
+**RegularSchedule**
 
 ```
 id             UUID     PK
 tenant_id      UUID     FK → tenants(id)
-dia_semana     SMALLINT  1=Lunes ... 7=Domingo
-hora_apertura  TIME
-hora_cierre    TIME
+day_of_week    SMALLINT  1=Lunes ... 7=Domingo
+opening_time   TIME
+closing_time   TIME
 ```
 
 Cada fila representa un bloque horario de atención para un día de la semana. Si un día no tiene filas, el local no abre ese día. Si tiene más de una fila para el mismo día, significa que el local trabaja en horario cortado (ej: 12:00–15:00 y 20:00–23:00).
 
-**ExcepcionDisponibilidad**
+**AvailabilityException**
 
 Maneja cierres o aperturas puntuales que no responden al horario regular (feriados, fechas especiales).
 
 ```
 id             UUID     PK
 tenant_id      UUID     FK → tenants(id)
-fecha          DATE
-esta_abierto   BOOLEAN
-hora_apertura  TIME     nullable (obligatorio si esta_abierto = true)
-hora_cierre    TIME     nullable (obligatorio si esta_abierto = true)
-motivo         VARCHAR  nullable  ej: 'Feriado', 'Vacaciones'
+date           DATE
+is_open        BOOLEAN
+opening_time   TIME     nullable (obligatorio si is_open = true)
+closing_time   TIME     nullable (obligatorio si is_open = true)
+reason         VARCHAR  nullable  ej: 'Feriado', 'Vacaciones'
+created_at     TIMESTAMPTZ
 ```
 
-Funcionamiento del atributo `esta_abierto`:
-- `esta_abierto = false` → cerrado, `hora_apertura` y `hora_cierre` siempre null
-- `esta_abierto = true` → abre, `hora_apertura` y `hora_cierre` siempre obligatorios
+Funcionamiento del atributo `is_open`:
+- `is_open = false` → cerrado, `opening_time` y `closing_time` siempre null
+- `is_open = true` → abre, `opening_time` y `closing_time` siempre obligatorios
+
+> **Nota:** `AvailabilityException.is_open` es un campo **independiente** de `Tenant.is_open`. No son el mismo flag.
 
 **Ejemplo:** Si el local normalmente no abre los domingos, pero decide abrir el domingo 1 de junio por una fecha especial, el registro quedaría así:
 
 ```
-fecha:         2025-06-01
-esta_abierto:  true
-hora_apertura: 12:00
-hora_cierre:   22:00
-motivo:        'Apertura especial por fecha especial'
+date:           2025-06-01
+is_open:        true
+opening_time:   12:00
+closing_time:   22:00
+reason:         'Apertura especial por fecha especial'
 ```
 
-Cuando el sistema consulte si el local está abierto ese domingo, no va a encontrar registro en `HorarioRegular` para ese día (porque normalmente no abre), pero sí va a encontrar una excepción con `esta_abierto = true`, entonces usa el horario definido en esa excepción para determinar si está abierto en ese momento.
+#### ⚠️ Estado abierto/cerrado: toggle manual (`Tenant.is_open`)
+
+**El sistema NO calcula automáticamente si el local está abierto.** No existe ninguna lógica de negocio que compare la fecha/hora actual contra `RegularSchedule` o `AvailabilityException`.
+
+El campo `tenants.is_open` (default `true`) es un **toggle manual** que el dueño activa o desactiva desde el panel. Cuando está en `false`, el sitio sigue online y el menú se puede ver, pero el carrito queda deshabilitado y no se pueden crear pedidos.
+
+Los horarios y las excepciones **se guardan y se devuelven** en `GET /:tenant/availability`, pero hoy son **informativos**: ninguna lectura de esa información altera `is_open` ni bloquea el checkout.
+
+> **Pendiente (ver `PENDING.md`):** el cálculo automático de "abierto ahora" a partir del horario semanal y las excepciones no está implementado.
 
 #### Relación final
 
 ```
-Tenant 1 ————————— 1..* HorarioRegular
+Tenant 1 ————————— 1..* RegularSchedule
        |
-       └—————————————————————————————— 0..* ExcepcionDisponibilidad
+       └—————————————————————————————— 0..* AvailabilityException
 ```
 
-`ExcepcionDisponibilidad` apunta directamente al tenant porque es independiente del horario regular; son casos puntuales que no pertenecen a ninguna "programación semanal".
+`AvailabilityException` apunta directamente al tenant porque es independiente del horario regular; son casos puntuales que no pertenecen a ninguna "programación semanal".
 
 #### Ejemplo de Respuesta del Backend
+
+`GET /:tenant/availability` devuelve el fragmento `schedule` con los nombres reales de campo (ver [`API_REFERENCE.md`](./API_REFERENCE.md) para la respuesta completa):
 
 ```json
 "schedule": {
   "regular": [
-    { "diaSemana": 1, "horaApertura": "11:00", "horaCierre": "23:00" },
-    { "diaSemana": 2, "horaApertura": "11:00", "horaCierre": "23:00" },
-    { "diaSemana": 3, "horaApertura": "11:00", "horaCierre": "23:00" },
-    { "diaSemana": 4, "horaApertura": "11:00", "horaCierre": "23:00" },
-    { "diaSemana": 5, "horaApertura": "11:00", "horaCierre": "00:00" },
-    { "diaSemana": 6, "horaApertura": "12:00", "horaCierre": "01:00" }
-    // diaSemana 7 (domingo) ausente → no abre
+    { "id": "uuid", "dayOfWeek": 1, "openingTime": "11:00", "closingTime": "23:00" },
+    { "id": "uuid", "dayOfWeek": 2, "openingTime": "11:00", "closingTime": "23:00" },
+    { "id": "uuid", "dayOfWeek": 3, "openingTime": "11:00", "closingTime": "23:00" },
+    { "id": "uuid", "dayOfWeek": 4, "openingTime": "11:00", "closingTime": "23:00" },
+    { "id": "uuid", "dayOfWeek": 5, "openingTime": "11:00", "closingTime": "00:00" },
+    { "id": "uuid", "dayOfWeek": 6, "openingTime": "12:00", "closingTime": "01:00" }
+    // dayOfWeek 7 (domingo) ausente → no abre
   ],
-  "excepciones": [
+  "exceptions": [
     {
-      "fecha": "2025-06-01",
-      "estaAbierto": true,
-      "horaApertura": "12:00",
-      "horaCierre": "22:00",
-      "motivo": "Apertura especial por fecha especial"
+      "id": "uuid",
+      "date": "2025-06-01",
+      "isOpen": true,
+      "openingTime": "12:00",
+      "closingTime": "22:00",
+      "reason": "Apertura especial por fecha especial"
     },
     {
-      "fecha": "2025-05-25",
-      "estaAbierto": false,
-      "horaApertura": null,
-      "horaCierre": null,
-      "motivo": "Feriado nacional"
+      "id": "uuid",
+      "date": "2025-05-25",
+      "isOpen": false,
+      "openingTime": null,
+      "closingTime": null,
+      "reason": "Feriado nacional"
     }
   ]
 }
@@ -329,6 +352,12 @@ delivery_cost           DECIMAL   nullable
 |--------|---------------|
 | `delivery_cost_enabled = true` | El checkout suma el costo al total y lo muestra desglosado: *Subtotal: $X + Envío: $Y = Total: $Z* |
 | `delivery_cost_enabled = false` | El checkout muestra solo el subtotal con el aviso: *"El costo de envío no está incluido en este total y se coordina directamente con el local."* |
+
+#### Regla de negocio
+
+**El total del pedido incluye el costo de envío.** Cuando el local tiene un costo de envío fijo configurado, ese importe forma parte del total que ve y paga el cliente: el subtotal de productos más el envío. El frontend debe mostrar siempre el desglose para que el cliente vea explícitamente cuánto del total corresponde al envío.
+
+Cuando el local no tiene costo de envío configurado, el envío no se suma al total y se coordina directamente con el repartidor, lo que se le aclara al cliente con el aviso indicado arriba.
 
 > **Decisión de MVP:** no existe configuración de costos variables por zona o dirección. El costo de envío es un valor fijo único por tenant en caso de que este decida trabajar de esta manera, si no se considera como un costo externo que determinará el repartidor.
 
@@ -354,19 +383,25 @@ El sistema no utiliza la WhatsApp Business API. En su lugar, cuando el dueño ac
 
 **Combinando ambos mecanismos:** El link de seguimiento le permite consultar el estado en cualquier momento por su cuenta, y las notificaciones por WhatsApp le traen las actualizaciones de forma proactiva sin que tenga que hacer nada. Si el cliente no proporcionó su número en el checkout, puede agregarlo en cualquier momento desde la página de seguimiento (CU-07), aunque el link de seguimiento garantiza que igual pueda hacer el seguimiento de su pedido.
 
+> **Implementación actual:** el backend expone `PATCH /:tenant/orders/:uuid/customer/phone` para actualizar el teléfono del cliente asociado al pedido, pero **no hay ninguna UI en el frontend que lo invoque**. No existe el botón "Recibir actualizaciones por WhatsApp" ni en una pantalla de confirmación (que no existe) ni en la página de seguimiento. Ver [PENDING.md](../context/PENDING.md).
+
 ---
 
 ### Sesión del Cliente (localStorage)
 
-Para mejorar la experiencia de usuario sin requerir registro, el sistema utiliza `localStorage` del navegador para recordar el pedido activo del cliente.
+#### ⚠️ NO IMPLEMENTADO
 
-**Flujo:**
+El banner de **pedido activo** y la clave `pedido_activo_{tenantSlug}` en `localStorage` son un diseño propuesto, **no una funcionalidad existente**. No hay ninguna lectura ni escritura de esa clave en el frontend, y el menú público no muestra ningún banner de pedido en curso.
 
-1. Al confirmar el pedido, el frontend guarda el UUID bajo la clave `pedido_activo_{tenantSlug}` en el `localStorage` del dispositivo.
-2. Cuando el cliente vuelve a entrar a `tuapp.com/donpepe`, el frontend consulta el `localStorage`. Si existe un UUID con un pedido en **estado no terminal** (es decir, que no sea Entregado, Cancelado ni No Retirado), se muestra un banner: *"Tenés un pedido en curso → Ver estado"*.
-3. Cuando el pedido llega a un estado terminal, se elimina la entrada del `localStorage`.
+**Flujo propuesto (no implementado):**
 
-> **Nota:** se guarda un único pedido activo por tenant. Si el cliente realiza un segundo pedido antes de que se resuelva el anterior, el nuevo UUID reemplaza al anterior en el `localStorage`.
+1. Al confirmar el pedido, el frontend guardaría el UUID bajo la clave `pedido_activo_{tenantSlug}` en el `localStorage` del dispositivo.
+2. Cuando el cliente vuelve a entrar a `tuapp.com/donpepe`, el frontend consultaría el `localStorage`. Si existe un UUID con un pedido en **estado no terminal** (es decir, que no sea Entregado, Cancelado ni No Retirado), se mostraría un banner: *"Tenés un pedido en curso → Ver estado"*.
+3. Cuando el pedido llega a un estado terminal, se eliminaría la entrada del `localStorage`.
+
+> **Nota:** el diseño guarda un único pedido activo por tenant. Si el cliente realiza un segundo pedido antes de que se resuelva el anterior, el nuevo UUID reemplazaría al anterior en el `localStorage`.
+>
+> **Pendiente (ver `PENDING.md`):** cliente HTTP para consultar el estado del pedido activo + banner en el menú público.
 
 ---
 
@@ -374,7 +409,9 @@ Para mejorar la experiencia de usuario sin requerir registro, el sistema utiliza
 
 **Decisión para el MVP:** el panel del dueño realiza **polling cada 20 segundos** a la API para verificar si hay pedidos nuevos o cambios de estado. Es la solución más simple y suficiente para la escala del MVP.
 
-En versiones futuras, según la carga real del sistema, se evaluará migrar a **WebSockets** o **Server-Sent Events (SSE)** para lograr notificaciones verdaderamente en tiempo real con menor overhead.
+En versiones futuras, según la carga real del sistema, se evaluará migrar el **panel del dueño** a **WebSockets** o **Server-Sent Events (SSE)** para lograr notificaciones verdaderamente en tiempo real con menor overhead.
+
+> El SSE **ya está implementado y en uso**, pero solo para el **seguimiento del cliente** (`orders.sse.service.ts` + `@Sse()`). Lo que queda pendiente es aplicarlo al panel del dueño, que hoy sigue con polling.
 
 ---
 
@@ -411,12 +448,15 @@ Los registros con `deleted_at` no nulo son excluidos de todas las consultas púb
 
 El sistema tiene **dos contextos de URL distintos:**
 
-- `tuapp.com/donpepe` → Público, sin autenticación, cualquiera puede ver el menú y hacer pedidos.
-- `tuapp.com/donpepe/admin` → Privado, requiere JWT válido. Si el dueño no está logueado, lo redirige al login.
+- `/[tenant]` → Público, sin autenticación, cualquiera puede ver el menú y hacer pedidos.
+- `/admin` → Privado, requiere JWT válido. Si el dueño no está logueado, lo redirige al login.
 
-El login del dueño está en `tuapp.com/donpepe/admin/login`. Solo el dueño (o empleados que él autorice en el futuro) tiene credenciales para entrar.
+El login del dueño está en `/admin/login`. Solo el dueño (o empleados que él autorice en el futuro) tiene credenciales para entrar.
 
-En NestJS esto se implementa con un **Guard de autenticación** que solo aplica a las rutas `/admin`:
+**Entrega y transporte del token:**
+
+- El login responde con una **cookie HttpOnly** llamada `access_token` (7 días de vigencia, `SameSite=Lax`, `Secure` solo en producción).
+- El token también puede enviarse manualmente en el header `Authorization: Bearer <token>`.
 
 ```typescript
 // Las rutas públicas no tienen guard
@@ -429,7 +469,7 @@ getMenu(@TenantId() tenantId: string) { ... }
 getOrders(@TenantId() tenantId: string) { ... }
 ```
 
-El JWT además lleva el `tenant_id` del dueño adentro, así NestJS verifica no solo que esté autenticado, sino que solo pueda acceder a los datos de su propio negocio.
+El JWT además lleva el `tenant_id` del dueño adentro, así NestJS verifica no solo que esté autenticado, sino que solo pueda acceder a los datos de su propio negocio. El `tenant_id` se toma **exclusivamente del token** (o de la sesión), nunca de un parámetro de la request.
 
 ---
 
@@ -445,12 +485,12 @@ La idea es unificar el registro de la cuenta con el negocio, realizándolo en va
 
 ### Configuración Estética de los Negocios
 
-En el backend, se creará el endpoint `GET /tenants/donpepe/config` para devolver la información del negocio.
+El backend expone un **único endpoint público** que devuelve toda la configuración del negocio: `GET /:tenant/availability`. Es el mismo endpoint que devuelve los horarios y las excepciones (ver la sección anterior).
 
 **Ejemplo de respuesta del backend:**
 
 ```json
-GET /tenants/donpepe/config
+GET /:tenant/availability
 
 {
   "name": "Don Pepe Burger",
@@ -458,62 +498,45 @@ GET /tenants/donpepe/config
   "banner": "https://res.cloudinary.com/tuapp/image/upload/donpepe/banner.png",
   "primaryColor": "#E63946",
   "secondaryColor": "#1D3557",
+  "description": "Hamburguesas y smash",
   "whatsapp": "5493512345678",
   "address": "Av. Siempreviva 742",
+  "isOpen": true,
   "deliveryCostEnabled": true,
   "deliveryCost": 500.00,
   "schedule": {
     "regular": [
-      { "diaSemana": 1, "horaApertura": "11:00", "horaCierre": "23:00" },
-      { "diaSemana": 2, "horaApertura": "11:00", "horaCierre": "23:00" },
-      { "diaSemana": 3, "horaApertura": "11:00", "horaCierre": "23:00" },
-      { "diaSemana": 4, "horaApertura": "11:00", "horaCierre": "23:00" },
-      { "diaSemana": 5, "horaApertura": "11:00", "horaCierre": "00:00" },
-      { "diaSemana": 6, "horaApertura": "12:00", "horaCierre": "01:00" }
+      { "id": "uuid", "dayOfWeek": 1, "openingTime": "11:00", "closingTime": "23:00" },
+      { "id": "uuid", "dayOfWeek": 6, "openingTime": "12:00", "closingTime": "01:00" }
       // domingo ausente → no abre
     ],
-    "excepciones": [
+    "exceptions": [
       {
-        "fecha": "2025-06-01",
-        "estaAbierto": true,
-        "horaApertura": "12:00",
-        "horaCierre": "22:00",
-        "motivo": "Apertura especial"
+        "id": "uuid",
+        "date": "2025-06-01",
+        "isOpen": true,
+        "openingTime": "12:00",
+        "closingTime": "22:00",
+        "reason": "Apertura especial"
       },
       {
-        "fecha": "2025-05-25",
-        "estaAbierto": false,
-        "horaApertura": null,
-        "horaCierre": null,
-        "motivo": "Feriado nacional"
+        "id": "uuid",
+        "date": "2025-05-25",
+        "isOpen": false,
+        "openingTime": null,
+        "closingTime": null,
+        "reason": "Feriado nacional"
       }
     ]
   }
 }
 ```
 
+> **Referencia:** la especificación completa de este endpoint y de los endpoints de configuración del dueño está en [`API_REFERENCE.md`](./API_REFERENCE.md).
+
 #### ¿Cómo lo usa el frontend?
 
-Cuando alguien entra a `tuapp.com/donpepe`, lo primero que hace Next.js es pedir la configuración del tenant:
-
-```javascript
-// Un solo endpoint público
-GET /tenants/donpepe/config
-
-// Respuesta
-{
-  "name": "Don Pepe Burger",
-  "logo": "https://storage.tuapp.com/donpepe/logo.png",
-  "banner": "https://storage.tuapp.com/donpepe/banner.png",
-  "primaryColor": "#E63946",
-  "secondaryColor": "#1D3557",
-  "whatsapp": "5493512345678",
-  "address": "Av. Siempreviva 742",
-  "schedule": { ... }
-}
-```
-
-Con eso el frontend aplica los colores como CSS variables y renderiza todo con la identidad del negocio:
+Con esa respuesta el frontend aplica los colores como CSS variables y renderiza todo con la identidad del negocio:
 
 ```css
 :root {
@@ -526,7 +549,7 @@ Con eso el frontend aplica los colores como CSS variables y renderiza todo con l
 
 ### Métodos de Pago
 
-En el MVP no existe integración con pasarelas de pago online. El cliente abona en efectivo o por transferencia bancaria al momento de retirar o recibir el pedido.
+En el MVP no existe integración con pasarelas de pago online. El cliente abona en **efectivo**, por **transferencia bancaria** o con **tarjeta de débito** al momento de retirar o recibir el pedido.
 
 #### Configuración por parte del dueño
 
@@ -534,29 +557,56 @@ El dueño puede cargar sus datos bancarios desde el panel de administración en 
 
 #### Flujo del cliente
 
-En el checkout el cliente selecciona su método de pago preferido: efectivo o transferencia. Si elige transferencia, la pantalla de confirmación del pedido muestra los datos bancarios del negocio para que pueda realizar el pago por su cuenta desde su banco. La verificación del pago es manual; el dueño confirma desde el panel que la transferencia fue recibida.
+En el checkout el cliente selecciona su método de pago preferido: efectivo, transferencia o tarjeta de débito. Si elige **transferencia**, la pantalla del checkout muestra los datos bancarios del negocio (CBU, alias, banco y titular) para que pueda realizar el pago por su cuenta desde su banco.
+
+#### ⚠️ Verificación del pago: NO IMPLEMENTADA
+
+La **verificación del pago es manual y no está implementada como acción ni estado en el sistema**:
+
+- No existe ningún campo de estado de pago en la entidad `Order` (el enum `PaymentMethod` solo registra el método elegido, no si fue pagado).
+- No existe ninguna acción en el panel del dueño para marcar un pedido como "pago verificado" / "pago pendiente".
+- La verificación hoy es una gestión **fuera del sistema**: el dueño revisa su banco/cuenta por su cuenta y luego avanza el estado del pedido manualmente con los botones normales (`Confirmar pedido`, etc.).
+
+> **Pendiente (ver `PENDING.md`):** estado de pago + acción de verificación manual en el panel del dueño.
 
 ---
 
-### Estructura de carpetas en Next.js
+### Seguridad y límites
 
-```
-app/
-├── [tenant]/
-|   ├── page.tsx              → carta digital (tuapp.com/donpepe)
-|   ├── pedido/
-|   |   └── [uuid]/
-|   |       └── page.tsx      → seguimiento (tuapp.com/donpepe/pedido/uuid)
-|   └── admin/
-|       ├── page.tsx          → panel admin (tuapp.com/donpepe/admin)
-|       ├── productos/
-|       |   └── page.tsx
-|       └── pedidos/
-|           └── page.tsx
-└── page.tsx                  → landing de tuapp.com (presentación del producto)
-```
+Resumen de las medidas de seguridad realmente implementadas en el backend:
 
----
+**Rate limiting (ThrottlerGuard global)**
+
+El límite por defecto es muy permisivo y casi todas las rutas heredan ese valor:
+
+| Ruta | Límite |
+|---|---|
+| Global (`ThrottlerModule.forRoot`) | **100000** requests / 60 s |
+| `POST /auth/register` | 5 / 60 s |
+| `POST /auth/login` | 10 / 60 s |
+| `GET /:tenant/orders/:uuid/track` | 30 / 60 s |
+| `PATCH /:tenant/orders/:uuid/customer/phone` | 3 / 60 s |
+| `POST /:tenant/orders` (crear pedido) | **sin límite propio** — el `@Throttle({ limit: 5, ttl: 60000 })` está comentado en el código, así que hereda el global de 100000 |
+
+**Cookie de sesión**
+
+- `access_token` es una cookie **HttpOnly** (7 días, `SameSite=Lax`, `Secure` solo en producción). Al ser HttpOnly, no es accesible desde JavaScript del navegador.
+
+**CORS**
+
+- Configurado en `main.ts` con `origin: process.env.CORS_ORIGIN ?? '*'` y `credentials: true`, métodos `GET, POST, PATCH, DELETE`.
+- Si `CORS_ORIGIN` no está definido, el origen es comodín (`*`) combinado con `credentials: true`, una combinación insegura en producción.
+
+**Carga de archivos (multipart)**
+
+- Productos (`POST/PATCH /:tenant/products`) y configuración del tenant (`PATCH /:tenant/admin/tenants`) usan `FileFieldsInterceptor` con `maxCount: 1` por campo, pero **no tienen `limits.fileSize` ni `fileFilter` configurados**.
+- Es decir, el backend acepta cualquier MIME type y no impone un tope de tamaño explícito en el servidor antes de subir a Cloudinary.
+
+**Aislamiento por tenant**
+
+- Las rutas protegidas toman el `tenant_id` del JWT, nunca del body o de los query params, lo que evita IDOR entre negocios.
+
+> **Pendientes (ver `PENDING.md`):** límite específico en la creación de pedidos, tope de tamaño y validación de MIME en las subidas, y `CORS_ORIGIN` obligatorio en producción.
 
 ## 7. Casos de Uso Principales
 
@@ -564,12 +614,13 @@ app/
 
 1. El cliente entra a `tuapp.com/donpepe`
 2. Navega el menú y agrega productos al carrito
-3. Confirma el carrito y completa el formulario de checkout (Teléfono opcional)
-4. El sistema registra el pedido y muestra pantalla de confirmación con link de seguimiento
-5. El UUID del pedido se guarda en `localStorage` bajo `pedido_activo_{tenantSlug}`
-6. El dueño recibe la notificación en el panel (actualización por polling cada 20 segundos)
+3. Confirma el carrito y completa el formulario de checkout (Nombre y Teléfono obligatorios, dirección si elige envío)
+4. El sistema registra el pedido y redirige directamente a la página de seguimiento con el UUID (`tuapp.com/donpepe/pedido/[uuid]`)
+5. El dueño recibe el pedido en el panel (actualización por polling cada 20 segundos)
 
-### CU-02: Registrar producto en menú
+> **NO IMPLEMENTADO:** el UUID no se guarda en `localStorage` bajo `pedido_activo_{tenantSlug}`, por lo que no hay banner de pedido activo.
+
+### CU-02: Registrar producto
 
 1. El dueño entra al panel de administración
 2. Va a la sección "Productos"
@@ -587,13 +638,15 @@ app/
 1. El dueño entra a "Configuración"
 2. Sube su logo y banner
 3. Elige su color primario
-4. Guarda los cambios y el sitio se actualiza en tiempo real
+4. Guarda los cambios y el sitio se actualiza
 
-### CU-05: Registrar cierre de local temporalmente
+### CU-05: Cierre temporal
 
-1. El dueño activa el modo "Cerrado" desde el panel
-2. Los clientes que entren al sitio ven un mensaje de "Estamos cerrados"
-3. El carrito se deshabilita y no se pueden generar pedidos, pero sí visualizar el menú
+1. El dueño activa el modo "Cerrado" desde el panel (`PATCH /:tenant/admin/tenants` con `isOpen: false`)
+2. Los clientes que entren al sitio siguen viendo el menú
+3. El carrito se deshabilita y no se pueden generar pedidos
+
+> El cierre es un **toggle manual** sobre `tenants.is_open`. No se deriva automáticamente del horario semanal ni de las excepciones de fecha.
 
 ### CU-06: Cancelar pedido
 
@@ -602,77 +655,148 @@ app/
 3. El sistema solicita un motivo de cancelación opcional (ej: "Sin stock", "Local cerrado")
 4. El dueño confirma la cancelación
 5. El sistema actualiza el estado del pedido a `Cancelado` y registra el motivo
-6. Si el cliente proporcionó su número, el sistema genera el botón "Notificar al cliente" con un mensaje pre-armado informando la cancelación y el motivo. Si no, simplemente se muestra en el seguimiento del pedido que fue "Cancelado".
-7. El dueño envía la notificación con un tap desde WhatsApp
+6. El dueño puede usar el botón "Notificar cliente por WhatsApp", que abre WhatsApp con un mensaje pre-armado informando la cancelación
+
+> La notificación es un link pre-armado que el dueño envía con un tap. **No hay verificación de pago asociada.**
 
 ### CU-07: Seguir pedido por WhatsApp
 
-1. Cliente confirma el pedido sin dejar teléfono
-2. En la pantalla de confirmación/seguimiento aparece un botón "Recibir actualizaciones por WhatsApp"
-3. El cliente ingresa su número
-4. El sistema actualiza el campo `telefono` en `customers`
-5. El dueño puede notificarle normalmente por WhatsApp
+> **⚠️ NO IMPLEMENTADO en el frontend.** El backend expone `PATCH /:tenant/orders/:uuid/customer/phone` (límite 3/min) que actualiza el teléfono del cliente del pedido, pero **no hay ninguna UI en el frontend que lo invoque**: no existe el botón "Recibir actualizaciones por WhatsApp".
 
-### CU-08: Consultar estado de pedido
+Flujo diseñado:
 
-1. El cliente accede al link de seguimiento de su pedido `tuapp.com/donpepe/pedido/[uuid]` (por link directo o por el banner en `localStorage`)
-2. El sistema muestra el estado actual del pedido en un stepper visual con los estados: `Pendiente → En preparación → Listo → Entregado`, o en su defecto `Cancelado`
+1. El cliente entra a la página de seguimiento de su pedido
+2. Se le ofrece la opción de ingresar su número de WhatsApp
+3. El sistema actualiza el teléfono en `customers` (snapshot del pedido)
+4. El dueño puede notificarle normalmente por WhatsApp
+
+> Como el teléfono es **obligatorio en el checkout**, el caso solo tendría sentido para pedidos realizados antes de este requisito o para corregir un número mal cargado.
+
+### CU-08: Consultar estado
+
+1. El cliente accede al link de seguimiento de su pedido `tuapp.com/donpepe/pedido/[uuid]`
+2. El sistema muestra el estado actual del pedido en un stepper visual con los estados: `Pendiente → En preparación → Listo → Entregado`, o en su defecto `Cancelado` o `No retirado`
 3. El cliente puede ver el detalle completo del pedido (productos, cantidades, total, método de pago, tipo de entrega)
 4. Si el estado del pedido cambia mientras el cliente tiene la página abierta, el stepper se actualiza en tiempo real sin necesidad de recargar mediante SSE
-5. Si el cliente aún no registró su número, el sistema le ofrece el botón "Recibir actualizaciones por WhatsApp"
+5. El cliente puede consultar al negocio por el botón "Contactar por WhatsApp", que abre un chat con el WhatsApp del local configurado en el tenant
 
 ---
 
 ## 8. Modelo de Datos Simplificado
 
+**Todas las claves primarias y foráneas son `UUID`** (`uuid PRIMARY KEY DEFAULT uuid_generate_v4()`). No existen ids incrementales.
+
 ```
-tenants                  → negocios registrados (id, slug, name, logo, ...)
-users                    → dueños de negocios (id, email, password, role, ...)
-categories               → categorías del menú (id, name, created_at, ...)
-products                 → productos (id, name, description, price, is_active, deleted_at, ...)
-orders                   → pedidos (id, status (ENUM), cancellation_reason, ...)
-order_items              → detalle de pedido (id, name, quantity, price, ...)
+tenants                  → negocios registrados
+                           (id, slug, name, logo, banner, primary_color, secondary_color,
+                            description, whatsapp, address, is_open, cbu, alias,
+                            account_holder, bank, delivery_cost_enabled, delivery_cost,
+                            created_at, updated_at)
+
+users                    → dueños de negocios
+                           (id, tenant_id, email, password, role, created_at, updated_at)
+
+categories               → categorías del menú
+                           (id, tenant_id, name, is_active, created_at, updated_at, deleted_at)
+
+products                 → productos
+                           (id, tenant_id, category_id, name, description, price,
+                            image_url, is_active, created_at, updated_at, deleted_at)
+
+orders                   → pedidos
+                           (id, tenant_id, customer_id, delivery_id, status (ENUM),
+                            tracking_uuid, cancellation_reason, total, payment_method (ENUM),
+                            delivery_type (ENUM), notes, created_at, updated_at)
+
+order_items              → detalle del pedido
+                           (id, order_id, product_id, name, quantity, price)
+
 customers                → snapshot de datos del comprador al momento del pedido
                            (id, name, phone, address)
-delivery                 → datos de envío a domicilio (id, address, notes, ...)
-regular_schedules        → horario semanal (id, day_of_week (SMALLINT), opening_time, closing_time, ...)
-availability_exceptions  → cierres/aperturas excepcionales (id, date, is_open, ...)
+
+deliveries               → datos de envío a domicilio
+                           (id, address, notes, delivery_fee)
+
+regular_schedules        → horario semanal
+                           (id, tenant_id, day_of_week (SMALLINT), opening_time, closing_time)
+
+availability_exceptions  → cierres/aperturas excepcionales
+                           (id, tenant_id, date, is_open, opening_time, closing_time,
+                            reason, created_at)
 ```
+
+### Notas del modelo
+
+- **`store_pickup` no existe.** El campo real es `orders.delivery_type` (ENUM `DeliveryType`), que define retiro en local vs. envío a domicilio.
+- **`payment_method`** (ENUM `PaymentMethod`) está en `orders` y registra el método de pago elegido. No es un estado de pago.
+- **`updated_at`** existe en `tenants`, `users`, `categories`, `products`, `orders` y `availability_exceptions`.
+- **`is_active`** está tanto en `categories` como en `products` y controla la visibilidad en el menú público.
+- **`tenants.whatsapp`** es el número de contacto del negocio, usado por los links pre-armados de WhatsApp.
+- **`products.image_url`** guarda la URL de Cloudinary.
+- El nombre real de la tabla de envíos es **`deliveries`** (no `delivery`).
+- **`order_items`, `customers` y `deliveries` NO tienen `tenant_id`.** Son entidades internas del agregado `Order` y se aíslan a través de `orders.tenant_id`.
+- `Customer.updatePhone()` es la operación que permite actualizar el teléfono del snapshot del cliente.
+- **Soft delete:** solo `products` y `categories` tienen `deleted_at`. `users` **no** tiene `deleted_at`.
+- **Enums:** `orders.status` → `OrderStatus`; `orders.payment_method` → `PaymentMethod`; `orders.delivery_type` → `DeliveryType`; `users.role` → `UserRole`.
+- Los importes (`price`, `total`, `delivery_fee`, `delivery_cost`) son `decimal(10,2)`.
+
+> **Referencia:** el detalle completo de las entidades y sus relaciones está en [`diagrams.md`](./diagrams.md).
 
 ---
 
 ## 9. Diagramas
 
-### Diagrama de Clases
-
-> Los diagramas de clases, entidad-relación, máquina de estados y casos de uso se encuentran en el archivo [`DIAGRAMS.md`](./DIAGRAMS.md).
+> Los diagramas de clases, entidad-relación, máquina de estados y casos de uso se encuentran en el archivo [`diagrams.md`](./diagrams.md).
 
 **Clases principales identificadas:**
 
 | Clase | Atributos clave | Métodos |
 |-------|----------------|---------|
-| **Order** | status, cancellation_reason, total, payment_method, store_pickup, tracking_uuid | createOrder(), confirmOrder(), readyOrder(), deliverOrder(), markAsNotPickedUp(), cancelOrder() |
-| **OrderItem** | name, quantity, price | — |
-| **Customer** | name, phone, address | updatePhone() |
-| **Delivery** | address, notes, delivery_fee | — |
-| **Product** | name, description, price, is_active, deleted_at | createProduct(), updateProduct(), deleteProduct(), activateProduct(), hideProduct() |
-| **Category** | name, deleted_at | createCategory(), updateCategory(), deleteCategory() |
-| **User** | email, password, role | login(), register() |
-| **Tenant** | slug, name, logo, banner, primary_color, secondary_color, delivery_cost_enabled, delivery_cost | — |
-| **RegularSchedule** | day_of_week, opening_time, closing_time | — |
-| **AvailabilityException** | date, is_open, opening_time, closing_time, reason | — |
+| **Tenant** | id (UUID), slug, name, logo, banner, primary_color, secondary_color, description, whatsapp, address, is_open, cbu, alias, account_holder, bank, delivery_cost_enabled, delivery_cost | — |
+| **User** | id (UUID), tenant_id, email, password, role | login(), register() |
+| **Category** | id (UUID), tenant_id, name, is_active, deleted_at | createCategory(), updateCategory(), deleteCategory(), activateCategory(), hideCategory() |
+| **Product** | id (UUID), tenant_id, category_id, name, description, price, image_url, is_active, deleted_at | createProduct(), updateProduct(), deleteProduct(), activateProduct(), hideProduct(), removeImage() |
+| **Order** | id (UUID), tenant_id, customer_id, delivery_id, status, tracking_uuid, cancellation_reason, total, payment_method, delivery_type, notes | createOrder(), confirmOrder(), readyOrder(), deliverOrder(), markAsNotPickedUp(), cancelOrder() |
+| **OrderItem** | id (UUID), order_id, product_id, name, quantity, price | — |
+| **Customer** | id (UUID), name, phone, address | updatePhone() |
+| **Delivery** | id (UUID), address, notes, delivery_fee | — |
+| **RegularSchedule** | id (UUID), tenant_id, day_of_week, opening_time, closing_time | — |
+| **AvailabilityException** | id (UUID), tenant_id, date, is_open, opening_time, closing_time, reason | — |
 
 ---
 
 ## 10. Funcionalidades Fuera del MVP (versiones futuras)
 
+El detalle y la priorización de cada ítem están en [`ROADMAP.md`](./ROADMAP.md).
+
+### A) Antes de desplegar
+
+- Registrar pedido manual desde el panel admin (botón/modal "Agregar pedido" en Gestión de Pedidos)
+- Imprimir recibo del pedido
+- Impresión térmica automática
+- Código QR en Configuración para imprimir como cartel de mostrador
+- Cupones de descuento
+- Apartado de estadísticas con reportes en tabla filtrables por fecha, estado y cliente
+- Métodos de pago con recargos/descuentos automáticos por método
+
+### B) Después de probarlo con clientes
+
+- Conciliación bancaria automática con CVU único por pedido (Chytapay, Cucuru u otra herramienta)
+- Control de stock con actualización automática por venta
+- Extras en los pedidos (ej. agregar carne, cheddar)
+
+### C) Roles y plataforma
+
 - Rol Cliente con registro y beneficios por múltiples compras
 - Rol Administrador global
 - Rol EMPLOYEE (mozo/encargado)
-- Costos de envío variables por zona o dirección
 - Integración con pasarelas de pago online
-- Migración de polling a WebSockets/SSE para el panel del dueño
-- Reportes avanzados de ventas
+- Costos de envío variables por zona o dirección
+- Migración del polling del panel del dueño a WebSockets/SSE
+
+---
+
+> La deuda técnica y los bugs conocidos detectados en el código están en [`context/PENDING.md`](../context/PENDING.md).
 
 ---
 

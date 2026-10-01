@@ -380,6 +380,7 @@ stateDiagram-v2
 - **Cliente** — usuario final, no requiere registro ni login.
 - **Owner** — dueño del negocio, requiere autenticación JWT.
 
+> **Numeración unificada con documentación principal:** CU-01 Registrar pedido, CU-02 Registrar producto, CU-03 Ocultar producto, CU-04 Registrar apariencia de negocio, CU-05 Cierre temporal, CU-06 Cancelar pedido, CU-07 Seguir pedido por WhatsApp, CU-08 Consultar estado. Donde aparezca otra numeración (ej. "CU-06" en "Notificar cliente por WhatsApp"), ignorar el número.
 ---
 
 ### Cliente
@@ -418,7 +419,7 @@ stateDiagram-v2
 | Marcar como no retirado | `LISTO` → `NO_RETIRADO` |
 | Cancelar pedido | `PENDIENTE` o `EN_PREPARACION` → `CANCELADO` |
 | Consultar detalle de pedido | `GET /:tenant/orders/:id` |
-| Notificar cliente por WhatsApp | Genera link pre-armado al cambiar estado (CU-06) |
+| Notificar cliente por WhatsApp | Genera link pre-armado al cambiar estado |
 
 **Productos**
 
