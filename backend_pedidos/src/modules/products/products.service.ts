@@ -14,6 +14,7 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { PaginatedResult } from '../../common/interfaces/paginated-result.interface';
+import { isHttpUrl } from '../../common/utils/is-http-url.util';
 
 @Injectable()
 export class ProductsService {
@@ -203,7 +204,7 @@ export class ProductsService {
       name: product.name,
       description: product.description,
       price: Number(product.price),
-      imageUrl: product.imageUrl,
+      imageUrl: isHttpUrl(product.imageUrl) ? product.imageUrl : null,
       isActive: product.isActive,
       categoryId: product.categoryId,
     };

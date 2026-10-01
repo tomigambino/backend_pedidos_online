@@ -13,6 +13,7 @@ import { UpdateExceptionDto } from './dto/update-exception.dto';
 import { ExceptionResponseDto } from './dto/exception-response.dto';
 import { TenantConfigResponseDto } from './dto/tenant-config-response.dto';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { isHttpUrl } from '../../common/utils/is-http-url.util';
 
 @Injectable()
 export class TenantsService {
@@ -88,8 +89,8 @@ export class TenantsService {
 
     return {
       name: tenant.name,
-      logo: tenant.logo,
-      banner: tenant.banner,
+      logo: isHttpUrl(tenant.logo) ? tenant.logo : null,
+      banner: isHttpUrl(tenant.banner) ? tenant.banner : null,
       primaryColor: tenant.primaryColor,
       secondaryColor: tenant.secondaryColor,
       description: tenant.description,
