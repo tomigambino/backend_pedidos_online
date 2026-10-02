@@ -577,16 +577,22 @@ Resumen de las medidas de seguridad realmente implementadas en el backend:
 
 **Rate limiting (ThrottlerGuard global)**
 
-El límite por defecto es muy permisivo y casi todas las rutas heredan ese valor:
+El límite por defecto es muy permisivo y casi todas las rutas heredan ese valor. Todos cuentan por
+IP (`req.ip`) en una ventana de 60 s:
 
 | Ruta | Límite |
 |---|---|
 | Global (`ThrottlerModule.forRoot`) | **100000** requests / 60 s |
 | `POST /auth/register` | 5 / 60 s |
 | `POST /auth/login` | 10 / 60 s |
+| `POST /:tenant/orders` (crear pedido) | 10 / 60 s |
 | `GET /:tenant/orders/:uuid/track` | 30 / 60 s |
 | `PATCH /:tenant/orders/:uuid/customer/phone` | 3 / 60 s |
-| `POST /:tenant/orders` (crear pedido) | **sin límite propio** — el `@Throttle({ limit: 5, ttl: 60000 })` está comentado en el código, así que hereda el global de 100000 |
+
+> **Requisito de despliegue:** el contador depende de `X-Forwarded-For`. En producción nginx debe
+> enviar `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` porque la app usa
+> `trust proxy: 1`. Sin ese header, `req.ip` es la IP del proxy y **todos los clientes comparten un
+> único contador**. Bloqueante antes de desplegar.
 
 **Cookie de sesión**
 
@@ -599,14 +605,23 @@ El límite por defecto es muy permisivo y casi todas las rutas heredan ese valor
 
 **Carga de archivos (multipart)**
 
-- Productos (`POST/PATCH /:tenant/products`) y configuración del tenant (`PATCH /:tenant/admin/tenants`) usan `FileFieldsInterceptor` con `maxCount: 1` por campo, pero **no tienen `limits.fileSize` ni `fileFilter` configurados**.
-- Es decir, el backend acepta cualquier MIME type y no impone un tope de tamaño explícito en el servidor antes de subir a Cloudinary.
+- Productos (`POST/PATCH /:tenant/products`) y configuración del tenant (`PATCH /:tenant/admin/tenants`)
+  validan cada archivo con `imageUploadLimits()` e `imageFileFilter()` de
+  `src/common/utils/upload-limits.util.ts`: **5 MB por archivo** y MIME restringido a
+  `image/jpeg`, `image/png` e `image/webp`.
+- Un MIME no permitido devuelve `400` con el detalle del tipo recibido; un archivo mayor a 5 MB
+  devuelve `413`. La validación corre en multer, **antes** del service, así que el archivo rechazado
+  no llega a Cloudinary.
+- El filtro valida el `Content-Type` declarado por el cliente, que es falseable: un archivo que no
+  es imagen enviado como `image/png` pasa el filtro y es Cloudinary quien lo rechaza. La validación
+  real por magic bytes quedó descartada para el MVP para no agregar dependencias.
 
 **Aislamiento por tenant**
 
 - Las rutas protegidas toman el `tenant_id` del JWT, nunca del body o de los query params, lo que evita IDOR entre negocios.
 
-> **Pendientes (ver `PENDING.md`):** límite específico en la creación de pedidos, tope de tamaño y validación de MIME en las subidas, y `CORS_ORIGIN` obligatorio en producción.
+> **Pendientes (ver `PENDING.md`):** header `X-Forwarded-For` en nginx (bloqueante de despliegue),
+> `CORS_ORIGIN` obligatorio en producción y validación de MIME por magic bytes en las subidas.
 
 ## 7. Casos de Uso Principales
 

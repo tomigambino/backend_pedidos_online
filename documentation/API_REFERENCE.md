@@ -20,6 +20,7 @@
 - [Modelos de Datos](#modelos-de-datos)
 - [Máquina de Estados (Pedidos)](#máquina-de-estados-pedidos)
 - [Rate limiting](#rate-limiting)
+- [Límites de subida](#límites-de-subida-de-imágenes)
 
 ---
 
@@ -313,8 +314,9 @@ Crea un producto.
 **Content-Type:** `multipart/form-data`
 
 > La imagen se sube como archivo (`FileInterceptor('image')`) a Cloudinary en la carpeta
-> `pedilo/<tenantSlug>/products/`. No hay `limits.fileSize` ni `fileFilter` configurados: se acepta
-> cualquier MIME type y no hay tope de tamaño explícito en la aplicación.
+> `pedilo/<tenantSlug>/products/`. Hay `limits.fileSize` y `fileFilter` configurados
+> (ver [Límites de subida](#limites-de-subida-de-imágenes)): 5 MB por archivo y solo
+> `image/jpeg`, `image/png` o `image/webp`.
 
 | Campo | Tipo | Requerido | Notas |
 |-------|------|-----------|-------|
@@ -632,9 +634,10 @@ Actualiza la configuración del tenant.
 > Los campos de texto y los archivos se envían juntos en un solo request multipart.
 > Los archivos se aceptan con `FileFieldsInterceptor` (`maxCount: 1` por campo), se suben a Cloudinary
 > en la carpeta `pedilo/<tenantSlug>/branding/` y el anterior se borra en modo *fire-and-forget*.
-> No hay `limits.fileSize` ni `fileFilter` configurados: se acepta cualquier MIME type y no hay tope
-> de tamaño explícito. `isOpen` y `deliveryCostEnabled` aceptan el string `"true"`/`"false"` además
-> del booleano.
+> Cada archivo tiene los mismos límites que las imágenes de producto (ver
+> [Límites de subida](#limites-de-subida-de-imagenes)): 5 MB y solo `image/jpeg`, `image/png`
+> o `image/webp`. Se permiten hasta 2 archivos por request (uno de cada campo).
+> `isOpen` y `deliveryCostEnabled` aceptan el string `"true"`/`"false"` además del booleano.
 
 | Campo | Tipo | Requerido | Notas |
 |-------|------|-----------|-------|
@@ -975,14 +978,54 @@ Algunas rutas la sobreescriben con `@Throttle`, que es más restrictivo:
 |------|--------|--------|
 | `POST /auth/register` | 5 req/min | `@Throttle({ default: { limit: 5, ttl: 60000 } })` |
 | `POST /auth/login` | 10 req/min | `@Throttle({ default: { limit: 10, ttl: 60000 } })` |
+| `POST /:tenant/orders` | 10 req/min | `@Throttle({ default: { limit: 10, ttl: 60000 } })` en `orders.controller.ts:35` |
 | `GET /:tenant/orders/:uuid/track` | 30 req/min | `@Throttle({ default: { limit: 30, ttl: 60000 } })` |
 | `PATCH /:tenant/orders/:uuid/customer/phone` | 3 req/min | `@Throttle({ default: { limit: 3, ttl: 60000 } })` |
 
 El resto de las rutas **no** tienen límite propio: responden al `ThrottlerGuard` global con
 `limit: 100000`.
 
-> `POST /:tenant/orders` tiene un decorador `@Throttle({ limit: 5, ttl: 60000 })` **comentado** en
-> `orders.controller.ts:35`, así que Creation de pedidos está protegida solo por el límite global.
+Todos los límites cuentan **por IP** (`req.ip`), en una ventana de 60 s. En las respuestas que
+pasan el límite se incluyen `X-RateLimit-Limit`, `X-RateLimit-Remaining` y `X-RateLimit-Reset`
+(segundos); el `429` trae `Retry-After`.
+
+> **Requisito de despliegue:** el contador depende de `X-Forwarded-For`. En producción nginx
+> debe enviar `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` porque la app usa
+> `trust proxy: 1`. Sin ese header, `req.ip` es la IP del proxy y **todos los clientes comparten
+> un único contador** (por ejemplo, un local con tráfico bloquearía los pedidos de sus propios
+> clientes). Bloqueante antes de desplegar.
+
+### Límites de subida de imágenes
+
+Las rutas con `multipart/form-data` (`POST`/`PATCH /:tenant/products` y `PATCH /:tenant/admin/tenants`)
+validan cada archivo con `imageUploadLimits()` e `imageFileFilter()` de
+`src/common/utils/upload-limits.util.ts`:
+
+| Regla | Valor | Respuesta |
+|-------|-------|-----------|
+| Tamaño máximo por archivo | 5 MB (5242880 bytes) | `413 Payload Too Large` |
+| MIME permitido | `image/jpeg`, `image/png`, `image/webp` | `400 Bad Request` |
+| Archivos por request | 1 en productos, 2 en tenant (`logo` + `banner`) | `400 Bad Request` |
+
+El filtro de tamaño corre en multer, **antes** de validar el body y antes de llegar al service, así
+que un archivo rechazado no se sube a Cloudinary ni crea registros. El `413` usa el mensaje de Nest
+en inglés (`"File too large"`), mientras que el rechazo por MIME trae el detalle del tipo recibido.
+
+```json
+// 413 - archivo mayor a 5 MB
+{ "statusCode": 413, "message": "File too large", "error": "Payload Too Large" }
+
+// 400 - MIME no permitido
+{ "statusCode": 400, "message": "Tipo de imagen no permitido: image/gif. Permitidos: image/jpeg, image/png, image/webp", "error": "Bad Request" }
+```
+
+> **Limitación conocida:** el filtro valida el `Content-Type` declarado por el cliente, que es
+> falseable. Un archivo que no es una imagen enviado con `Content-Type: image/png` pasa el filtro y
+> llega a Cloudinary, que lo rechaza. La validación real requiere inspeccionar los magic bytes.
+
+> Nota de clientes: algunos clientes HTTP abortan la subida si el servidor responde antes de que
+> termine de enviar el body, y en ese caso puede observarse un error de conexión en vez del `413`,
+> aunque la respuesta `413` sí se emite.
 
 ---
 
@@ -990,11 +1033,11 @@ El resto de las rutas **no** tienen límite propio: responden al `ThrottlerGuard
 
 - **Multi-tenant:** Todas las rutas incluyen `:tenant` (slug) en la URL, que el middleware resuelve al `tenantId` correspondiente. **Excepciones:** `GET /`, `POST /auth/register`, `POST /auth/login` y `GET /auth/me` (autenticación no está scoped a un tenant).
 - **Autenticación:** Las rutas marcadas con 🔒 requieren un JWT. El token se puede enviar vía header `Authorization: Bearer <token>` **o** como cookie HttpOnly `access_token` (la estrategia JWT busca en ambas). Se obtiene de `POST /auth/login` o `POST /auth/register` (ambos devuelven `accessToken` en el body y además setean la cookie `access_token`). El guard no valida que el `tenantId` del token coincida con el `:tenant` de la URL: el aislamiento depende del `where tenantId = ...` de cada consulta.
-- **Rate limiting:** global **100000 req/60s**, con límites más estrictos en 4 rutas. Ver [Rate limiting](#rate-limiting).
+- **Rate limiting:** global **100000 req/60s**, con límites más estrictos en 5 rutas (incluido `POST /:tenant/orders`, 10 req/min). Todos cuentan por IP (`req.ip`). Ver [Rate limiting](#rate-limiting).
 - **Rutas inexistentes:** ⚠️ `GET /:tenant/menu` aparece en la lista `forRoutes` del `TenantMiddleware` en `app.module.ts`, pero **ningún controller lo expone**. El menú público se compone con `GET /:tenant/categories` + `GET /:tenant/products`. No documente `/menu`.
 - **CORS:** `origin` configurable vía `CORS_ORIGIN` (default `*`), `credentials: true`, métodos `GET/POST/PATCH/DELETE`.
 - **Seguridad:** Helmet aplicado globalmente para headers de seguridad HTTP.
 - **Validación:** `ValidationPipe` global con `transform: true`, `whitelist: true`, `forbidNonWhitelisted: true`. Todos los bodies se transforman y validan automáticamente. Los `:id` / `:uuid` usan `ParseUUIDPipe`.
 - **Códigos de respuesta en borrados:** los handlers que retornan `void` responden `200 OK` con cuerpo vacío. Ningún endpoint declara `@HttpCode(204)`.
-- **Subida de imágenes:** Productos, logo y banner se suben a Cloudinary (`pedilo/<tenantSlug>/products/` y `pedilo/<tenantSlug>/branding/`). Los endpoints de productos (`POST`, `PATCH`) y tenant (`PATCH`) aceptan `multipart/form-data`. **No hay `limits.fileSize` ni `fileFilter`** en ningún interceptor: no se restringe el tamaño ni el MIME type.
+- **Subida de imágenes:** Productos, logo y banner se suben a Cloudinary (`pedilo/<tenantSlug>/products/` y `pedilo/<tenantSlug>/branding/`). Los endpoints de productos (`POST`, `PATCH`) y tenant (`PATCH`) aceptan `multipart/form-data` con **5 MB por archivo** y MIME restringido a `image/jpeg`/`image/png`/`image/webp` (`413` por tamaño, `400` por MIME). Ver [Límites de subida](#límites-de-subida-de-imágenes).
 - **Soft delete e isActive:** Categorías y productos usan soft delete (`deleted_at`), que TypeORM excluye automáticamente de las consultas de repositorio. Además, `isActive` oculta de forma independiente. El listado público de productos oculta los de categoría oculta/borrada; el listado público de categorías solo muestra las activas.
