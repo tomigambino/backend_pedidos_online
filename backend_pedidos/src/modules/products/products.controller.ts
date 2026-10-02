@@ -18,6 +18,10 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { TenantId } from '../../common/decorators/tenant-id.decorator';
+import {
+  imageFileFilter,
+  imageUploadLimits,
+} from '../../common/utils/upload-limits.util';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth/jwt-auth.guard';
 
 @Controller(':tenant/products')
@@ -52,7 +56,12 @@ export class ProductsController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: imageUploadLimits(1),
+      fileFilter: imageFileFilter,
+    }),
+  )
   create(
     @Body() dto: CreateProductDto,
     @UploadedFile() file: Express.Multer.File,
@@ -63,7 +72,12 @@ export class ProductsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: imageUploadLimits(1),
+      fileFilter: imageFileFilter,
+    }),
+  )
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateProductDto,
