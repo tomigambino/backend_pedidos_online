@@ -19,6 +19,10 @@ import { UpdateRegularScheduleDto } from './dto/update-regular-schedule.dto';
 import { CreateExceptionDto } from './dto/create-exception.dto';
 import { UpdateExceptionDto } from './dto/update-exception.dto';
 import { TenantId } from '../../common/decorators/tenant-id.decorator';
+import {
+  imageFileFilter,
+  imageUploadLimits,
+} from '../../common/utils/upload-limits.util';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth/jwt-auth.guard';
 
 @Controller(':tenant')
@@ -33,10 +37,13 @@ export class TenantsController {
   @UseGuards(JwtAuthGuard)
   @Patch('admin/tenants')
   @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'logo', maxCount: 1 },
-      { name: 'banner', maxCount: 1 },
-    ]),
+    FileFieldsInterceptor(
+      [
+        { name: 'logo', maxCount: 1 },
+        { name: 'banner', maxCount: 1 },
+      ],
+      { limits: imageUploadLimits(2), fileFilter: imageFileFilter },
+    ),
   )
   update(
     @Body() dto: UpdateTenantDto,
