@@ -43,14 +43,21 @@
       `req.ip`; el límite global de 100k/min se mantiene intencional. QA verificada: 10×201 y el
       11º en 429, con `Retry-After` en el 429 y `X-RateLimit-*` en el 201. Queda pendiente el
       bloqueante de X-Forwarded-For de arriba, sin el cual el contador es compartido por proxy.
-- [ ] [Alta] products.controller.ts:55,66; tenants.controller.ts:35-40 — Multipart sin limits.fileSize ni fileFilter en productos y tenant: sin restricción de tamaño ni MIME del lado servidor (el límite de 5 MB del front es solo cliente).
 - [x] [Media] auth.controller.ts:19 — **Resuelto**: `AuthController` tenía `@UseGuards(ThrottlerGuard)`
       además del `ThrottlerGuard` global de `app.module.ts`, así que cada request de esas rutas
       se contaba **dos veces** contra el mismo key y el límite efectivo era la mitad
       (`POST /auth/register` cortaba en el 3º request en vez del 6º; `login` en el 6º en vez del 11º).
       Se quitó el `@UseGuards` de clase: el guard global ya cubre. QA verificada con
       `backend_pedidos/test/scratch/qa-orders-throttle.ts`.
-- [x] [Alta] products.controller.ts:55,66; tenants.controller.ts:35-40 — **Resuelto**: Multipart con `limits.fileSize` (5 MB por archivo, 413) y `fileFilter` de MIME (jpeg/png/webp, 400) en productos y tenant. Queda el riesgo residual del MIME falseable, que depende de Cloudinary. QA: `backend_pedidos/test/scratch/qa-upload-limits.ts`.
+- [x] [Alta] products.controller.ts:55,66; tenants.controller.ts:35-40 — **Resuelto**: multipart con
+      `limits.fileSize` y `fileFilter` en productos y tenant. `src/common/utils/upload-limits.util.ts`
+      expone `imageUploadLimits(maxFiles)` (5 MB por archivo → `413`) e `imageFileFilter()` (solo
+      `image/jpeg`, `image/png`, `image/webp` → `400` con el tipo recibido en el mensaje), aplicados en
+      `products.controller.ts` (`FileInterceptor('image')`, `files: 1`) y `tenants.controller.ts`
+      (`FileFieldsInterceptor`, `files: 2` para logo + banner). El filtro corre en multer, antes del
+      service: un archivo rechazado no llega a Cloudinary. El límite es 5 MB exactos (busboy corta en
+      `fileSize === limit`, por eso el `+1` en el helper). QA: `test/scratch/qa-upload-limits.ts` y
+      `test/scratch/qa-tenant-upload-limits.ts`. Queda el residuo [Baja] de MIME falseable de arriba.
 - [ ] [Media] tenant.middleware.ts:14-24 — No se valida que el slug de la URL coincida con el tenantId del JWT en rutas protegidas (no hay fuga porque manda el JWT, pero falta 403 como defensa en profundidad). Enlazar con ítem existente "Lookup de slug redundante en rutas /admin/*" sin duplicarlo.
 - [x] [Media] categories.service.ts:62 — **Resuelto**: `CategoriesService.runFindAll()` pasa el mismo filtro al count (`{ tenantId, ...(onlyActive && { isActive: true }) }`), así que en el listado público `total` y `totalPages` coinciden con las filas listadas. La rama admin queda igual (ya excluía los borrados por `@DeleteDateColumn`).
 - [ ] [Baja] categories.service.ts:68-75 — El `map` sobre `getRawMany()` (tipado `any[]`) genera 7 errores preexistentes de ESLint (`@typescript-eslint/no-unsafe-assignment` / `no-unsafe-member-access`); confirmados idénticos en HEAD, no los introduce el fix de visibilidad. Solución propuesta: declarar una interfaz `CategoryRawRow { id: string; name: string; is_active: boolean; product_count: string }` y tipar la query con `getRawMany<CategoryRawRow>()` para eliminar el `any`.
