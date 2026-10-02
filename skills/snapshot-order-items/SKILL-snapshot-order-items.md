@@ -85,7 +85,7 @@ async create(dto: CreateOrderDto, tenantId: string): Promise<OrderResponseDto> {
 
   return this.dataSource.transaction(async (manager) => {
     // 1. Validar y copiar el snapshot de cada producto.
-    //    Delega a ProductsService, que centraliza la lógica de isActive.
+    //    Delega a ProductsService, que centraliza la visibilidad (isActive + categoría).
     const items = await Promise.all(
       dto.items.map(async (itemDto) => {
         const product = await this.productsService.findOneForOrder(
@@ -143,22 +143,29 @@ La validación no está en `OrdersService` sino en `ProductsService.findOneForOr
 ```typescript
 // src/modules/products/products.service.ts
 async findOneForOrder(id: string, tenantId: string): Promise<Product> {
-  const product = await this.productRepo.findOne({
-    where: { id, tenantId, isActive: true },
-  });
+  const product = await this.productRepo
+    .createQueryBuilder('p')
+    .innerJoin('p.category', 'c', 'c.isActive = true AND c.deletedAt IS NULL')
+    .where('p.id = :id AND p.tenantId = :tenantId AND p.isActive = true', {
+      id,
+      tenantId,
+    })
+    .getOne();
   if (!product) throw new BadRequestException(`Producto ${id} no disponible`);
   return product;
 }
 ```
 
-Verifica, en un solo `where`:
+Verifica, en la misma query:
 1. El producto existe (`deletedAt IS NULL` automático por TypeORM — los soft-deleted no se encuentran).
 2. El producto pertenece al tenant (`tenantId` coincide).
 3. El producto está activo (`isActive: true` — no oculto por falta de stock).
+4. La categoría del producto está activa (`c.isActive = true` — INNER JOIN a `category`).
+5. La categoría del producto no está borrada (`c.deletedAt IS NULL`).
 
 Si alguna falla, lanza `BadRequestException` con el id del producto problemático.
 
-> Ojo: `findOneForOrder()` **no** mira la categoría. Un producto activo cuya categoría esté oculta o borrada se puede pedir igual. Para el menú público sí se filtra por INNER JOIN a la categoría (ver la skill `soft-delete`).
+Es la misma regla que el catálogo público (`ProductsService.findAll()`, INNER JOIN a la categoría): **lo que no se puede pedir es lo que no está en el menú** (ver la skill `soft-delete`).
 
 ### Cálculo del total
 
@@ -242,7 +249,7 @@ relations: { items: { product: true } }, // ❌ carga el producto en vivo
 - [ ] ¿La entidad `OrderItem` tiene `name` y `price` como columnas propias (no `@Computed`)?
 - [ ] ¿`OrderItem` no tiene `tenantId` y se aísla vía `order.tenantId`?
 - [ ] ¿El servicio copia `product.name` y `product.price` al crear cada item?
-- [ ] ¿La validación del producto delega en `ProductsService.findOneForOrder()` (filtra `tenantId` + `isActive`)?
+- [ ] ¿La validación del producto delega en `ProductsService.findOneForOrder()` (filtra `tenantId` + `isActive` del producto + `isActive`/`deletedAt` de su categoría)?
 - [ ] ¿El `total` se calcula en el servidor desde el snapshot (`sum(price * quantity)`)?
 - [ ] ¿Los endpoints que muestran pedidos usan `items.name` e `items.price`, no `items.product.name`?
 - [ ] ¿`Delivery.deliveryFee` se copia del tenant al crear el pedido, y solo con `deliveryType = ENVIO_DOMICILIO`?
@@ -283,11 +290,13 @@ Aunque el soft delete garantiza que el producto nunca se elimine físicamente en
 
 ### Validación de disponibilidad al crear el pedido (CU-01)
 
-Al registrar un pedido (CU-01), la verificación ocurre en `ProductsService.findOneForOrder()` **antes de copiar el snapshot**, en un solo `where`:
+Al registrar un pedido (CU-01), la verificación ocurre en `ProductsService.findOneForOrder()` **antes de copiar el snapshot**, en la misma query:
 1. El producto existe en la BD (`deletedAt IS NULL` — automático por TypeORM).
 2. El producto pertenece al tenant (`tenantId` coincide).
 3. El producto está activo (`isActive: true` — no oculto por falta de stock).
+4. La categoría del producto está activa (`isActive: true`).
+5. La categoría del producto no está borrada (`deletedAt IS NULL`).
 
 Si alguna condición falla, lanza `BadRequestException` con el id del producto problemático.
 
-> La categoría del producto **no** se verifica en este flujo. El filtrado por visibilidad de categoría aplica solo al catálogo público (`ProductsService.findAll`, INNER JOIN), no al alta de pedidos.
+> El alta de pedidos aplica el mismo filtro de visibilidad que el catálogo público (`ProductsService.findAll()`, INNER JOIN a `category`): pedir un producto con la categoría oculta o borrada devuelve 400, igual que pedir un producto oculto, borrado o de otro tenant.
