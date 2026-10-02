@@ -130,8 +130,9 @@ Lista **solo categorías activas** (paginadas, ordenadas por nombre ASC).
 
 > - `productCount` cuenta los productos de la categoría que están **activos y no borrados** (`deleted_at IS NULL AND is_active = true`).
 > - Las categorías ocultas (`isActive: false`) **no** aparecen en el listado público.
-> - ⚠️ `total` / `totalPages` se calculan con un `count` que **no** filtra por `isActive`, así que
->   incluyen también las categorías ocultas. `data` y `total` pueden no cuadrar.
+> - `total` / `totalPages` se calculan con un `count` que aplica **el mismo filtro que `data`**
+>   (`tenant_id` + `is_active = true`, más `deleted_at IS NULL` automático por `@DeleteDateColumn`),
+>   así que ambos cuadran.
 
 ---
 
@@ -402,7 +403,7 @@ Crea un pedido. **No requiere JWT.**
 | Campo | Tipo | Requerido | Validación |
 |-------|------|-----------|------------|
 | `items` | array | sí (min 1) | |
-| `items[].productId` | string (UUID) | sí | producto activo del tenant |
+| `items[].productId` | string (UUID) | sí | producto visible del tenant: activo, no borrado y con su categoría activa y no borrada |
 | `items[].quantity` | integer (≥1) | sí | |
 | `customer.name` | string | sí | ≤120, solo letras, espacios y apóstrofes (`/^[a-zA-ZÀ-ÿñÑ\s']{2,}$/`) |
 | `customer.phone` | string | sí | 6–20 chars, solo números, espacios, `+`, `-`, `()` (`/^[0-9+\-\s()]{6,20}$/`) |
@@ -419,9 +420,14 @@ Crea un pedido. **No requiere JWT.**
   si `deliveryCostEnabled` está activo; si no, `deliveryFee = null`.
 - El `total` se calcula **server-side** como `Σ (price × quantity)` usando el precio actual de cada
   producto (snapshot en `order_items`). **El `total` NO incluye el `deliveryFee`.**
-- Cada `productId` debe pertenecer al tenant, estar `isActive = true` y no estar soft-deleted
-  (`ProductsService.findOneForOrder`). No se valida que su categoría esté activa o no borrada,
-  por lo que se puede ordenar un producto cuya categoría esté oculta.
+- Cada `productId` se valida en `ProductsService.findOneForOrder()` con **el mismo filtro de visibilidad
+  que el catálogo público** (`GET /:tenant/products`, INNER JOIN a `categories`): debe pertenecer al tenant,
+  estar `isActive = true`, no estar soft-deleted, y su categoría debe estar `is_active = true` y sin
+  `deleted_at`.
+- **No se puede pedir nada que no esté en el menú público.** Si un producto está inactivo, borrado, es de
+  otro tenant, o su categoría está oculta o borrada → **400 Bad Request**, con `message`:
+  `Producto <uuid> no disponible`. La validación corre antes de copiar el snapshot, así que el pedido
+  no se crea.
 
 **Respuesta:** `201 Created` — `OrderResponseDto` (ver [Modelos](#orderresponsedto)).
 
