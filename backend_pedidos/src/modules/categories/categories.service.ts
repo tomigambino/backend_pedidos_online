@@ -59,7 +59,9 @@ export class CategoriesService {
 
     const [rawData, total] = await Promise.all([
       queryBuilder.getRawMany(),
-      this.categoryRepo.count({ where: { tenantId } }),
+      this.categoryRepo.count({
+        where: { tenantId, ...(onlyActive && { isActive: true }) },
+      }),
     ]);
 
     return {

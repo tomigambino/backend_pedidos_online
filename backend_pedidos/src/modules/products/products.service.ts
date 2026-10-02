@@ -153,9 +153,14 @@ export class ProductsService {
   }
 
   async findOneForOrder(id: string, tenantId: string): Promise<Product> {
-    const product = await this.productRepo.findOne({
-      where: { id, tenantId, isActive: true },
-    });
+    const product = await this.productRepo
+      .createQueryBuilder('p')
+      .innerJoin('p.category', 'c', 'c.isActive = true AND c.deletedAt IS NULL')
+      .where('p.id = :id AND p.tenantId = :tenantId AND p.isActive = true', {
+        id,
+        tenantId,
+      })
+      .getOne();
     if (!product) throw new BadRequestException(`Producto ${id} no disponible`);
     return product;
   }
