@@ -1,10 +1,19 @@
 # PENDING.md
 
 ## Seguridad / infraestructura
-- [ ] Configurar nginx en prod con `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`
-      (necesario para que `trust proxy: 1` funcione correctamente)
+- [ ] **[Alta] BLOQUEANTE DE DESPLIEGUE** — Configurar nginx en prod con
+      `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for` (necesario para que
+      `trust proxy: 1` funcione correctamente). Sin este header, `req.ip` es la IP del proxy:
+      con el `@Throttle` de 10/min en `POST /:tenant/orders` (cuenta por IP) **todas las requests
+      de todos los usuarios comparten un único contador**, y un local con tráfico bloquearía a sus
+      propios clientes. No desplegar hasta cerrarlo.
 - [ ] Revisar `trust proxy` si se agrega CDN/LB delante de nginx (pasaría a 2+ hops)
 - [ ] `synchronize: true` → pasar a migraciones antes de deploy
+- [ ] [Baja] products.controller.ts:55,66; tenants.controller.ts:35-40 — El `fileFilter` de las
+      subidas valida el MIME declarado por el cliente (`Content-Type`), que es falseable: un archivo
+      no-imagen con `Content-Type: image/png` pasa el filtro (Cloudinary lo rechaza o transforma
+      después, pero el buffer ya llegó al servidor). Validación real requiere inspección por magic
+      bytes (p. ej. paquete `file-type`), decisión descartada para el MVP por no agregar dependencias.
 
 ## Code quality (deferred)
 - [ ] Extraer `buildDateRange()` helper en `orders.service.ts`
