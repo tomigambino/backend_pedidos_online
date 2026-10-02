@@ -173,16 +173,13 @@ async function main() {
         .send({ email: 'no-es-un-email' }); // inválido a propósito: el guard corre antes que el ValidationPipe, así que no crea nada
       registerStatuses.push(res.status);
     }
-    // Solo se verifica que /auth/register conserva su propio límite (429 antes del 6to).
-    // NO se espera 400×5 y luego 429: hoy corta en el 3ro porque AuthController tiene
-    // @UseGuards(ThrottlerGuard) (auth.controller.ts:19) además del guard global de
-    // app.module.ts:77-80, y cada request se cuenta dos veces contra el mismo key.
-    // Es un bug preexistente de esas rutas, ajenos a este cambio.
-    const blockedAt = registerStatuses.indexOf(429);
+    // 5/min reales: AuthController ya no duplica el ThrottlerGuard (el guard global de
+    // app.module.ts alcanza), así que 5 requests pasan y el 6º corta.
     check(
-      'POST /auth/register conserva límite propio (429 antes del 6to)',
-      blockedAt !== -1 && blockedAt < 5,
-      `statuses=${JSON.stringify(registerStatuses)} (400 = payload inválido, 429 = throttle; corte en el ${blockedAt + 1}º por doble conteo preexistente)`,
+      'POST /auth/register tiene 5/min reales (5×400 y el 6º -> 429)',
+      registerStatuses.slice(0, 5).every((s) => s === 400) &&
+        registerStatuses[5] === 429,
+      `statuses=${JSON.stringify(registerStatuses)} (400 = payload inválido, 429 = throttle)`,
     );
   } finally {
     await purge(ds, [tenantA, tenantB]);

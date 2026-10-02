@@ -38,8 +38,18 @@
 ## Hallazgos de auditoría de documentación (2026-09)
 - [ ] [Alta] orders.service.ts:106-116 — El total del pedido en backend no incluye deliveryFee, pero el checkout del front muestra subtotal + envío: el cliente ve un total y el sistema guarda otro. Decidir qué es "total" y alinear front y back.
 - [x] [Alta] products.service.ts:155-166 — **Resuelto**: `ProductsService.findOneForOrder()` ahora Inner JOINea a `category` con `isActive = true AND deletedAt IS NULL`, la misma regla que el catálogo público (`findAll()`). Un pedido de un producto con categoría oculta o borrada devuelve 400. QA verificada: los tres casos (categoría oculta, categoría borrada, producto de otro tenant) dan 400.
-- [ ] [Alta] orders.controller.ts:35, app.module.ts:29-35 — POST /:tenant/orders sin @Throttle (comentado) y rate limit global muy alto (100k/min). El límite global alto es intencional (iteración 3), pero POST orders carece de límite específico; evaluar agregar @Throttle dedicado.
+- [x] [Alta] orders.controller.ts:35, app.module.ts:29-35 — **Resuelto**: `POST /:tenant/orders`
+      ahora tiene `@Throttle({ default: { limit: 10, ttl: 60000 } })` (`ttl` en ms) y cuenta por
+      `req.ip`; el límite global de 100k/min se mantiene intencional. QA verificada: 10×201 y el
+      11º en 429, con `Retry-After` en el 429 y `X-RateLimit-*` en el 201. Queda pendiente el
+      bloqueante de X-Forwarded-For de arriba, sin el cual el contador es compartido por proxy.
 - [ ] [Alta] products.controller.ts:55,66; tenants.controller.ts:35-40 — Multipart sin limits.fileSize ni fileFilter en productos y tenant: sin restricción de tamaño ni MIME del lado servidor (el límite de 5 MB del front es solo cliente).
+- [x] [Media] auth.controller.ts:19 — **Resuelto**: `AuthController` tenía `@UseGuards(ThrottlerGuard)`
+      además del `ThrottlerGuard` global de `app.module.ts`, así que cada request de esas rutas
+      se contaba **dos veces** contra el mismo key y el límite efectivo era la mitad
+      (`POST /auth/register` cortaba en el 3º request en vez del 6º; `login` en el 6º en vez del 11º).
+      Se quitó el `@UseGuards` de clase: el guard global ya cubre. QA verificada con
+      `backend_pedidos/test/scratch/qa-orders-throttle.ts`.
 - [ ] [Media] tenant.middleware.ts:14-24 — No se valida que el slug de la URL coincida con el tenantId del JWT en rutas protegidas (no hay fuga porque manda el JWT, pero falta 403 como defensa en profundidad). Enlazar con ítem existente "Lookup de slug redundante en rutas /admin/*" sin duplicarlo.
 - [x] [Media] categories.service.ts:62 — **Resuelto**: `CategoriesService.runFindAll()` pasa el mismo filtro al count (`{ tenantId, ...(onlyActive && { isActive: true }) }`), así que en el listado público `total` y `totalPages` coinciden con las filas listadas. La rama admin queda igual (ya excluía los borrados por `@DeleteDateColumn`).
 - [ ] [Baja] categories.service.ts:68-75 — El `map` sobre `getRawMany()` (tipado `any[]`) genera 7 errores preexistentes de ESLint (`@typescript-eslint/no-unsafe-assignment` / `no-unsafe-member-access`); confirmados idénticos en HEAD, no los introduce el fix de visibilidad. Solución propuesta: declarar una interfaz `CategoryRawRow { id: string; name: string; is_active: boolean; product_count: string }` y tipar la query con `getRawMany<CategoryRawRow>()` para eliminar el `any`.

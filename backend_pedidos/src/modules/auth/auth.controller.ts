@@ -8,7 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -16,7 +16,6 @@ import { JwtAuthGuard } from './guards/jwt-auth/jwt-auth.guard';
 
 type AuthenticatedRequest = Request & { user: { userId: string } };
 
-@UseGuards(ThrottlerGuard)
 @Controller()
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
