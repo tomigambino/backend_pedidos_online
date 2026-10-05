@@ -74,6 +74,7 @@
 - [ ] [Media] documentation_sistema_pedidos_online_V3.md:613-673 — Frontend: CU-07 (botón "Recibir actualizaciones por WhatsApp") y el banner de pedido en curso con `localStorage` `pedido_activo_{tenantSlug}` están documentados pero **no implementados** (no hay referencias a esas claves ni UI que llame a `PATCH /:tenant/orders/:uuid/customer/phone`). Como el teléfono pasó a ser obligatorio en el checkout, decidir si se elimina CU-07 de la documentación y se deja solo el banner como mejora opcional.
 - [ ] [Baja] frontend_pedidos/app/registro/page.tsx:1-3 — Stub de 3 líneas (`return <div>Registro de negocio</div>`) duplicado de `app/register/page.tsx:1-5`, que sí renderiza `RegisterForm`. Borrar `app/registro/` o redirigir a `/register`.
 - [ ] [Baja] Documentacion-Sistema-De-Pedidos-Online.md:1-3 — Copia general obsoleta en la raíz del monorepo (fuera del repo backend): 757 líneas, sin header de versión y con dos H1 duplicados; contiene el contenido previo al v3.5 (nombres de campo en español, `dia_semana`, `DIAGRAMS.md`). Marcarla como OBSOLETA en su encabezado o borrarla; la vigente es `backend_pedidos_online/documentation/documentation_sistema_pedidos_online_V3.md` v3.5.
+- [ ] [Baja] Frontend: En la vista de detalle del pedido del panel admin y/o flujo público falta mostrar la nota o instrucciones de entrega a domicilio especificadas por el cliente.
 
 ### TODO/FIXME encontrados en el código
 - Ningún comentario `// TODO` o `// FIXME` hallado en backend (src/) ni frontend (app/, components/, lib/, hooks/).
