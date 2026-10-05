@@ -200,4 +200,131 @@ describe('Visibilidad pública', () => {
       expect(await countOrders()).toBe(b + 1);
     });
   });
+
+  describe('listados públicos', () => {
+    it('GET /products devuelve exactamente los productos visibles', async () => {
+      const res = await request(app.getHttpServer()).get(`/${SLUG_A}/products`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(2);
+      expect(res.body.data.map((p: { id: string }) => p.id).sort()).toEqual(
+        [fixture.prodVisibleA, fixture.prodExtraA].sort(),
+      );
+    });
+
+    it('GET /products no filtra datos del tenant B', async () => {
+      const res = await request(app.getHttpServer()).get(`/${SLUG_A}/products`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.map((p: { id: string }) => p.id)).not.toContain(
+        fixture.prodB,
+      );
+    });
+
+    it('GET /categories devuelve exactamente las categorías activas', async () => {
+      const res = await request(app.getHttpServer()).get(
+        `/${SLUG_A}/categories`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(3);
+      expect(
+        res.body.data.map((c: { id: string }) => c.id).sort(),
+      ).toEqual(
+        [
+          fixture.catVisibleA,
+          fixture.catActiveWithInactiveProdA,
+          fixture.catExtraA,
+        ].sort(),
+      );
+    });
+
+    it('GET /categories expone productCount solo de productos públicos', async () => {
+      const res = await request(app.getHttpServer()).get(
+        `/${SLUG_A}/categories`,
+      );
+
+      const byId = Object.fromEntries(
+        res.body.data.map((c: { id: string; productCount: number }) => [
+          c.id,
+          c.productCount,
+        ]),
+      );
+      expect(byId[fixture.catVisibleA]).toBe(1);
+      expect(byId[fixture.catActiveWithInactiveProdA]).toBe(0);
+      expect(byId[fixture.catExtraA]).toBe(1);
+    });
+
+    it('GET /categories no filtra datos del tenant B', async () => {
+      const res = await request(app.getHttpServer()).get(
+        `/${SLUG_A}/categories`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(3);
+      expect(res.body.data.map((c: { id: string }) => c.id)).not.toContain(
+        fixture.catB,
+      );
+    });
+  });
+
+  describe('paginación pública', () => {
+    const categoryPage = async (page: number) => {
+      const res = await request(app.getHttpServer()).get(
+        `/${SLUG_A}/categories?page=${page}&limit=1`,
+      );
+      expect(res.status).toBe(200);
+      return res.body;
+    };
+
+    it('categorías limit=1: total, totalPages y una por página en orden ASC', async () => {
+      const p1 = await categoryPage(1);
+      expect(p1.total).toBe(3);
+      expect(p1.limit).toBe(1);
+      expect(p1.totalPages).toBe(3);
+      expect(p1.data).toHaveLength(1);
+
+      const p2 = await categoryPage(2);
+      const p3 = await categoryPage(3);
+
+      expect(p1.data[0].name).toBe('Activa Con Inactivo');
+      expect(p2.data[0].name).toBe('Extra A');
+      expect(p3.data[0].name).toBe('Visible A');
+
+      expect(p1.data[0].id).not.toBe(p2.data[0].id);
+      expect(p2.data[0].id).not.toBe(p3.data[0].id);
+      expect(p1.data[0].id).not.toBe(p3.data[0].id);
+    });
+
+    it('categorías page=4&limit=1: data vacío y total 3', async () => {
+      const res = await request(app.getHttpServer()).get(
+        `/${SLUG_A}/categories?page=4&limit=1`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(0);
+      expect(res.body.total).toBe(3);
+      expect(res.body.totalPages).toBe(3);
+    });
+
+    it('productos limit=1: dos páginas en orden ASC', async () => {
+      const page = async (p: number) => {
+        const res = await request(app.getHttpServer()).get(
+          `/${SLUG_A}/products?page=${p}&limit=1`,
+        );
+        expect(res.status).toBe(200);
+        return res.body;
+      };
+
+      const p1 = await page(1);
+      expect(p1.total).toBe(2);
+      expect(p1.totalPages).toBe(2);
+      expect(p1.data).toHaveLength(1);
+
+      const p2 = await page(2);
+
+      expect(p1.data[0].id).toBe(fixture.prodExtraA);
+      expect(p2.data[0].id).toBe(fixture.prodVisibleA);
+    });
+  });
 });
