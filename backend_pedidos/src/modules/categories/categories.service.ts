@@ -54,8 +54,9 @@ export class CategoriesService {
       .groupBy('c.id')
       .addGroupBy('c.name')
       .orderBy('c.name', 'ASC')
-      .skip((page - 1) * limit)
-      .take(limit);
+      .addOrderBy('c.id', 'ASC')
+      .offset((page - 1) * limit)
+      .limit(limit);
 
     const [rawData, total] = await Promise.all([
       queryBuilder.getRawMany(),
