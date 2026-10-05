@@ -327,4 +327,79 @@ describe('Visibilidad pública', () => {
       expect(p2.data[0].id).toBe(fixture.prodVisibleA);
     });
   });
+
+  describe('admin de categorías', () => {
+    const admin = (query = '') =>
+      request(app.getHttpServer())
+        .get(`/${SLUG_A}/categories/admin${query}`)
+        .set(auth(signToken(app, fixture.userA, fixture.tenantA)));
+
+    it('exige autenticación: sin token → 401', async () => {
+      const res = await request(app.getHttpServer()).get(
+        `/${SLUG_A}/categories/admin`,
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it('devuelve las 4 categorías (incluye la oculta, excluye la borrada)', async () => {
+      const res = await admin();
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(4);
+      expect(res.body.data.map((c: { id: string }) => c.id).sort()).toEqual(
+        [
+          fixture.catVisibleA,
+          fixture.catHiddenA,
+          fixture.catActiveWithInactiveProdA,
+          fixture.catExtraA,
+        ].sort(),
+      );
+      expect(res.body.data.map((c: { id: string }) => c.id)).not.toContain(
+        fixture.catDeletedA,
+      );
+    });
+
+    it('productCount cuenta el producto inactivo en admin y no en público', async () => {
+      const adminRes = await admin();
+      const adminCount = adminRes.body.data.find(
+        (c: { id: string }) => c.id === fixture.catActiveWithInactiveProdA,
+      ).productCount;
+
+      const publicRes = await request(app.getHttpServer()).get(
+        `/${SLUG_A}/categories`,
+      );
+      const publicCount = publicRes.body.data.find(
+        (c: { id: string }) => c.id === fixture.catActiveWithInactiveProdA,
+      ).productCount;
+
+      expect(adminCount).toBe(1);
+      expect(publicCount).toBe(0);
+    });
+
+    it('paginación limit=1: total 4, totalPages 4, orden ASC y páginas distintas', async () => {
+      const page = async (p: number) => {
+        const res = await admin(`?page=${p}&limit=1`);
+        expect(res.status).toBe(200);
+        return res.body;
+      };
+
+      const p1 = await page(1);
+      expect(p1.total).toBe(4);
+      expect(p1.limit).toBe(1);
+      expect(p1.totalPages).toBe(4);
+      expect(p1.data).toHaveLength(1);
+
+      const p2 = await page(2);
+      const p3 = await page(3);
+      const p4 = await page(4);
+
+      expect(p1.data[0].name).toBe('Activa Con Inactivo');
+      expect(p2.data[0].name).toBe('Extra A');
+      expect(p3.data[0].name).toBe('Oculta A');
+      expect(p4.data[0].name).toBe('Visible A');
+
+      expect(new Set([p1, p2, p3, p4].map((p) => p.data[0].id)).size).toBe(4);
+    });
+  });
 });
