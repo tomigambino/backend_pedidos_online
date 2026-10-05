@@ -100,14 +100,17 @@ export async function seedTenant(
   app: INestApplication,
   slug: string,
   name: string,
+  overrides?: {
+    minimumDeliveryTime?: number;
+  },
 ): Promise<string> {
   const id = randomUUID();
-  await app
-    .get(DataSource)
-    .query(
-      `INSERT INTO tenants (id, slug, name, is_open) VALUES ($1, $2, $3, true)`,
-      [id, slug, name],
-    );
+  const minimumDeliveryTime = overrides?.minimumDeliveryTime ?? 0;
+  await app.get(DataSource).query(
+    `INSERT INTO tenants (id, slug, name, is_open, minimum_delivery_time)
+     VALUES ($1, $2, $3, true, $4)`,
+    [id, slug, name, minimumDeliveryTime],
+  );
   return id;
 }
 
@@ -163,12 +166,39 @@ export async function seedSchedule(
   dayOfWeek: number,
   openingTime: string,
   closingTime: string,
+  maxOrderTime?: string | null,
 ): Promise<string> {
   const id = randomUUID();
   await app.get(DataSource).query(
-    `INSERT INTO regular_schedules (id, tenant_id, day_of_week, opening_time, closing_time)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [id, tenantId, dayOfWeek, openingTime, closingTime],
+    `INSERT INTO regular_schedules (id, tenant_id, day_of_week, opening_time, closing_time, max_order_time)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [id, tenantId, dayOfWeek, openingTime, closingTime, maxOrderTime ?? null],
+  );
+  return id;
+}
+
+export async function seedException(
+  app: INestApplication,
+  tenantId: string,
+  date: string,
+  isOpen: boolean,
+  openingTime?: string,
+  closingTime?: string,
+  maxOrderTime?: string | null,
+): Promise<string> {
+  const id = randomUUID();
+  await app.get(DataSource).query(
+    `INSERT INTO availability_exceptions (id, tenant_id, date, is_open, opening_time, closing_time, max_order_time)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      id,
+      tenantId,
+      date,
+      isOpen,
+      isOpen ? openingTime : null,
+      isOpen ? closingTime : null,
+      isOpen ? maxOrderTime ?? null : null,
+    ],
   );
   return id;
 }
