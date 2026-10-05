@@ -66,6 +66,13 @@ export class Order {
   @Column({ type: 'varchar', nullable: true })
   notes: string | null;
 
+  @Column({
+    name: 'desired_delivery_time',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  desiredDeliveryTime: Date | null;
+
   @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
   items: OrderItem[];
 

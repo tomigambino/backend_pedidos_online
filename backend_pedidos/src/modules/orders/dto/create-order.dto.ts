@@ -1,6 +1,7 @@
 import {
   IsArray,
   IsEnum,
+  IsISO8601,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -52,4 +53,8 @@ export class CreateOrderDto {
   @IsString()
   @MaxLength(300)
   deliveryNotes?: string;
+
+  @IsOptional()
+  @IsISO8601({ strict: true, strictSeparator: true })
+  desiredDeliveryTime?: string;
 }

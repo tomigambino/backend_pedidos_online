@@ -15,6 +15,7 @@ export class OrderResponseDto {
   paymentMethod: PaymentMethod;
   deliveryType: DeliveryType;
   notes: string | null;
+  desiredDeliveryTime: Date | null;
   customer: CustomerResponseDto;
   delivery: DeliveryResponseDto | null;
   items: OrderItemResponseDto[];

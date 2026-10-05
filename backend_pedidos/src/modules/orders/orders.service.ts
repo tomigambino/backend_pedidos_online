@@ -9,6 +9,7 @@ import { v4 as uuid } from 'uuid';
 import { Order } from './entities/order.entity';
 import { Delivery } from './entities/delivery.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { TenantsService } from '../tenants/tenants.service';
 import { ProductsService } from '../products/products.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
@@ -52,6 +53,7 @@ export class OrdersService {
     private readonly productsService: ProductsService,
     private readonly sseService: OrdersSseService,
     private readonly dataSource: DataSource,
+    private readonly tenantsService: TenantsService,
   ) {}
 
   async create(
@@ -68,6 +70,41 @@ export class OrdersService {
       throw new BadRequestException(
         'No se puede pagar con tarjeta de débito en envío a domicilio. Elegí efectivo o transferencia.',
       );
+    }
+
+    if (dto.desiredDeliveryTime) {
+      const desired = new Date(dto.desiredDeliveryTime);
+      if (Number.isNaN(desired.getTime())) {
+        throw new BadRequestException('desiredDeliveryTime inválido');
+      }
+
+      const minThreshold = new Date(
+        Date.now() + tenant.minimumDeliveryTime * 60_000,
+      );
+      if (desired < minThreshold) {
+        throw new BadRequestException(
+          `El horario deseado debe ser al menos ${tenant.minimumDeliveryTime} minutos después de ahora`,
+        );
+      }
+
+      const resolved = await this.tenantsService.resolveScheduleForDate(
+        tenantId,
+        desired,
+      );
+
+      if (!resolved) {
+        throw new BadRequestException('El local está cerrado ese día');
+      }
+
+      const desiredHM = this.formatHourMinuteInAR(desired);
+      if (
+        desiredHM < resolved.openingTime ||
+        desiredHM > resolved.maxOrderTime
+      ) {
+        throw new BadRequestException(
+          `El horario deseado debe estar entre ${resolved.openingTime} y ${resolved.maxOrderTime}`,
+        );
+      }
     }
 
     return this.dataSource.transaction(async (manager) => {
@@ -120,6 +157,9 @@ export class OrdersService {
       order.delivery = delivery;
       order.items = items;
       order.notes = dto.notes ?? null;
+      order.desiredDeliveryTime = dto.desiredDeliveryTime
+        ? new Date(dto.desiredDeliveryTime)
+        : null;
 
       const saved = await manager.getRepository(Order).save(order);
       return this.toResponse(saved);
@@ -237,16 +277,16 @@ export class OrdersService {
   ): Promise<OrderResponseDto> {
     const order = await this.dataSource.transaction(async (manager) => {
       const locked = await manager
-      .createQueryBuilder(Order, 'o')
-      .setLock('pessimistic_write', undefined, ['o'])
-      .leftJoinAndSelect('o.customer', 'customer')
-      .leftJoinAndSelect('o.items', 'items')
-      .leftJoinAndSelect('o.delivery', 'delivery')
-      .where('o.id = :id AND o.tenantId = :tenantId', {
-        id,
-        tenantId,
-      })
-      .getOne();
+        .createQueryBuilder(Order, 'o')
+        .setLock('pessimistic_write', undefined, ['o'])
+        .leftJoinAndSelect('o.customer', 'customer')
+        .leftJoinAndSelect('o.items', 'items')
+        .leftJoinAndSelect('o.delivery', 'delivery')
+        .where('o.id = :id AND o.tenantId = :tenantId', {
+          id,
+          tenantId,
+        })
+        .getOne();
 
       if (!locked) throw new NotFoundException('Pedido no encontrado');
 
@@ -259,7 +299,9 @@ export class OrdersService {
 
       locked.status = newStatus;
       locked.cancellationReason =
-        newStatus === OrderStatus.CANCELADO ? (cancellationReason ?? null) : null;
+        newStatus === OrderStatus.CANCELADO
+          ? (cancellationReason ?? null)
+          : null;
 
       return manager.save(locked);
     });
@@ -302,14 +344,23 @@ export class OrdersService {
     const trackingUrl = `${APP_URL}/${tenant?.slug ?? ''}/pedido/${order.trackingUuid}`;
     const statusText = STATUS_LABELS[order.status] ?? order.status;
     const tenantName = tenant?.name ?? 'el local';
+    const scheduledLine = order.desiredDeliveryTime
+      ? `\nHorario de ${order.deliveryType === DeliveryType.RETIRO_LOCAL ? 'retiro' : 'entrega'} programado: ${this.formatDesiredDeliveryTime(order.desiredDeliveryTime)}`
+      : '';
 
-    if (tenant && order.paymentMethod === PaymentMethod.TRANSFERENCIA && hasBankData) {
-      return `¡Hola ${order.customer.name}! Tu pedido #${order.trackingUuid.slice(0, 8).toUpperCase()} en ${tenantName} está ${statusText}. Para completar el pago por transferencia:\n\n` +
+    if (
+      tenant &&
+      order.paymentMethod === PaymentMethod.TRANSFERENCIA &&
+      hasBankData
+    ) {
+      return (
+        `¡Hola ${order.customer.name}! Tu pedido #${order.trackingUuid.slice(0, 8).toUpperCase()} en ${tenantName} está ${statusText}. Para completar el pago por transferencia:\n\n` +
         `Banco: ${tenant.bank}\nAlias: ${tenant.alias}\nCBU: ${tenant.cbu}\nTitular: ${tenant.accountHolder}\nMonto: $${Number(order.total).toLocaleString('es-AR')}\n\n` +
-        `Seguilo en tiempo real acá: ${trackingUrl}\nCualquier consulta, quedo a disposición. ¡Gracias por tu compra!`;
+        `Seguilo en tiempo real acá: ${trackingUrl}${scheduledLine}\nCualquier consulta, quedo a disposición. ¡Gracias por tu compra!`
+      );
     }
 
-    return `¡Hola ${order.customer.name}! Tu pedido #${order.trackingUuid.slice(0, 8).toUpperCase()} en ${tenantName} está ${statusText}. Seguilo en tiempo real acá: ${trackingUrl}. Cualquier consulta, quedo a disposición. ¡Gracias por tu compra!`;
+    return `¡Hola ${order.customer.name}! Tu pedido #${order.trackingUuid.slice(0, 8).toUpperCase()} en ${tenantName} está ${statusText}. Seguilo en tiempo real acá: ${trackingUrl}.${scheduledLine} Cualquier consulta, quedo a disposición. ¡Gracias por tu compra!`;
   }
 
   async updateCustomerPhone(
@@ -387,6 +438,7 @@ export class OrdersService {
       paymentMethod: order.paymentMethod,
       deliveryType: order.deliveryType,
       notes: order.notes ?? null,
+      desiredDeliveryTime: order.desiredDeliveryTime ?? null,
       customer: {
         id: order.customer?.id,
         name: order.customer?.name,
@@ -414,5 +466,29 @@ export class OrdersService {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
     };
+  }
+
+  private formatHourMinuteInAR(date: Date): string {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+    const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
+    const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
+    return `${hour}:${minute}`;
+  }
+
+  private formatDesiredDeliveryTime(date: Date): string {
+    return new Intl.DateTimeFormat('es-AR', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(date);
   }
 }
