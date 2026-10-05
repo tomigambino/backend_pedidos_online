@@ -15,6 +15,12 @@ import { TenantConfigResponseDto } from './dto/tenant-config-response.dto';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { isHttpUrl } from '../../common/utils/is-http-url.util';
 
+export type ResolvedSchedule = {
+  openingTime: string;
+  closingTime: string;
+  maxOrderTime: string;
+};
+
 @Injectable()
 export class TenantsService {
   constructor(
@@ -52,6 +58,8 @@ export class TenantsService {
     if (dto.deliveryCostEnabled !== undefined)
       tenant.deliveryCostEnabled = dto.deliveryCostEnabled;
     if (dto.deliveryCost !== undefined) tenant.deliveryCost = dto.deliveryCost;
+    if (dto.minimumDeliveryTime !== undefined)
+      tenant.minimumDeliveryTime = dto.minimumDeliveryTime;
     const folder = `pedilo/${tenant.slug}/branding/`;
     const logo = files?.logo?.[0];
     const banner = files?.banner?.[0];
@@ -99,6 +107,7 @@ export class TenantsService {
       isOpen: tenant.isOpen,
       deliveryCostEnabled: tenant.deliveryCostEnabled,
       deliveryCost: tenant.deliveryCost ? Number(tenant.deliveryCost) : null,
+      minimumDeliveryTime: tenant.minimumDeliveryTime,
       schedule: {
         regular: regular.map((r) => this.toScheduleResponse(r)),
         exceptions: exceptions.map((e) => this.toExceptionResponse(e)),
@@ -122,6 +131,7 @@ export class TenantsService {
     schedule.dayOfWeek = dto.dayOfWeek;
     schedule.openingTime = dto.openingTime;
     schedule.closingTime = dto.closingTime;
+    schedule.maxOrderTime = dto.maxOrderTime ?? null;
     schedule.tenantId = tenantId;
     const saved = await this.scheduleRepo.save(schedule);
     return this.toScheduleResponse(saved);
@@ -136,6 +146,8 @@ export class TenantsService {
     if (dto.dayOfWeek !== undefined) schedule.dayOfWeek = dto.dayOfWeek;
     if (dto.openingTime !== undefined) schedule.openingTime = dto.openingTime;
     if (dto.closingTime !== undefined) schedule.closingTime = dto.closingTime;
+    if (dto.maxOrderTime !== undefined)
+      schedule.maxOrderTime = dto.maxOrderTime;
     const saved = await this.scheduleRepo.save(schedule);
     return this.toScheduleResponse(saved);
   }
@@ -162,6 +174,7 @@ export class TenantsService {
     exception.isOpen = dto.isOpen;
     exception.openingTime = dto.isOpen ? (dto.openingTime ?? null) : null;
     exception.closingTime = dto.isOpen ? (dto.closingTime ?? null) : null;
+    exception.maxOrderTime = dto.isOpen ? (dto.maxOrderTime ?? null) : null;
     exception.reason = dto.reason ?? null;
     exception.tenantId = tenantId;
     const saved = await this.exceptionRepo.save(exception);
@@ -179,6 +192,9 @@ export class TenantsService {
       exception.isOpen = dto.isOpen;
       exception.openingTime = dto.isOpen ? (dto.openingTime ?? null) : null;
       exception.closingTime = dto.isOpen ? (dto.closingTime ?? null) : null;
+      exception.maxOrderTime = dto.isOpen ? (dto.maxOrderTime ?? null) : null;
+    } else if (dto.maxOrderTime !== undefined) {
+      exception.maxOrderTime = dto.maxOrderTime;
     }
     if (dto.reason !== undefined) exception.reason = dto.reason;
     const saved = await this.exceptionRepo.save(exception);
@@ -203,6 +219,57 @@ export class TenantsService {
       tenant.banner = null;
     }
     return this.tenantRepo.save(tenant);
+  }
+
+  async resolveScheduleForDate(
+    tenantId: string,
+    desired: Date,
+  ): Promise<ResolvedSchedule | null> {
+    const tenant = await this.findOneOrFail(tenantId);
+    const dateStr = this.getDateInAR(desired);
+    const dayOfWeek = this.getDayOfWeekInAR(desired);
+
+    const exception = await this.exceptionRepo.findOne({
+      where: { tenantId, date: dateStr },
+    });
+
+    if (exception) {
+      if (!exception.isOpen) return null;
+      const openingTime = exception.openingTime!.slice(0, 5);
+      const closingTime = exception.closingTime!.slice(0, 5);
+      const maxOrderTime = (
+        exception.maxOrderTime ??
+        this.subtractMinutesFromTime(closingTime, tenant.minimumDeliveryTime)
+      ).slice(0, 5);
+      return { openingTime, closingTime, maxOrderTime };
+    }
+
+    const schedules = await this.scheduleRepo.find({
+      where: { tenantId, dayOfWeek },
+      order: { openingTime: 'ASC' },
+    });
+
+    if (schedules.length === 0) return null;
+
+    const desiredHM = this.formatHourMinuteInAR(desired);
+    const matches = schedules.find((s) => {
+      const openingTime = s.openingTime.slice(0, 5);
+      const closingTime = s.closingTime.slice(0, 5);
+      const maxOrderTime = (
+        s.maxOrderTime ??
+        this.subtractMinutesFromTime(closingTime, tenant.minimumDeliveryTime)
+      ).slice(0, 5);
+      return desiredHM >= openingTime && desiredHM <= maxOrderTime;
+    });
+
+    const resolved = matches ?? schedules[0];
+    const openingTime = resolved.openingTime.slice(0, 5);
+    const closingTime = resolved.closingTime.slice(0, 5);
+    const maxOrderTime = (
+      resolved.maxOrderTime ??
+      this.subtractMinutesFromTime(closingTime, tenant.minimumDeliveryTime)
+    ).slice(0, 5);
+    return { openingTime, closingTime, maxOrderTime };
   }
 
   private async findOneOrFail(tenantId: string): Promise<Tenant> {
@@ -241,6 +308,7 @@ export class TenantsService {
       dayOfWeek: schedule.dayOfWeek,
       openingTime: schedule.openingTime,
       closingTime: schedule.closingTime,
+      maxOrderTime: schedule.maxOrderTime,
     };
   }
 
@@ -253,7 +321,55 @@ export class TenantsService {
       isOpen: exception.isOpen,
       openingTime: exception.openingTime,
       closingTime: exception.closingTime,
+      maxOrderTime: exception.maxOrderTime,
       reason: exception.reason,
     };
+  }
+
+  private getDateInAR(date: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  }
+
+  private getDayOfWeekInAR(date: Date): number {
+    const weekday = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      weekday: 'short',
+    }).format(date);
+    const map: Record<string, number> = {
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+      Sun: 7,
+    };
+    return map[weekday] ?? 1;
+  }
+
+  private formatHourMinuteInAR(date: Date): string {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+    const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
+    const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
+    return `${hour}:${minute}`;
+  }
+
+  private subtractMinutesFromTime(time: string, minutes: number): string {
+    const [h, m, s = '00'] = time.split(':');
+    const totalMinutes = parseInt(h) * 60 + parseInt(m) - minutes;
+    if (totalMinutes <= 0) return '00:00:00';
+    const newH = Math.floor(totalMinutes / 60);
+    const newM = totalMinutes % 60;
+    return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}:${s}`;
   }
 }
