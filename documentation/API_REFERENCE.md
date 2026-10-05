@@ -398,7 +398,8 @@ Crea un pedido. **No requiere JWT.**
   "deliveryType": "ENVIO_DOMICILIO",
   "address": "Calle Falsa 123",
   "notes": "Sin cebolla, por favor",
-  "deliveryNotes": "Dejar en recepción"
+  "deliveryNotes": "Dejar en recepción",
+  "desiredDeliveryTime": "2026-10-05T20:30:00-03:00"
 }
 ```
 
@@ -415,13 +416,20 @@ Crea un pedido. **No requiere JWT.**
 | `address` | string | solo si `deliveryType: ENVIO_DOMICILIO` | ≤200, debe contener al menos una letra |
 | `notes` | string | no | ≤300 — nota general del pedido |
 | `deliveryNotes` | string | no | ≤300 — solo para `ENVIO_DOMICILIO` |
+| `desiredDeliveryTime` | string (ISO 8601) | no | debe incluir fecha, hora y offset; debe ser ≥ `now + minimumDeliveryTime` y caer dentro de una ventana abierta del local para esa fecha |
 
 **Reglas de negocio:**
 - No se permite pagar con `TARJETA_DEBITO` en envíos a domicilio (error 400).
 - Si `deliveryType = ENVIO_DOMICILIO`, se crea un `Delivery` con `deliveryFee` = `tenant.deliveryCost`
   si `deliveryCostEnabled` está activo; si no, `deliveryFee = null`.
+- `desiredDeliveryTime` es opcional. Si se envía, debe ser un ISO 8601 completo (`YYYY-MM-DDTHH:mm:ss±HH:mm`)
+  posterior a `now + tenant.minimumDeliveryTime`, **dentro de una ventana abierta** del local para esa fecha
+  (considerando `availability_exceptions` para esa fecha o `regular_schedules` para ese día de la semana),
+  y con hora del día ≤ el `maxOrderTime` efectivo (configurado por schedule/excepción o, si está null,
+  calculado como `closingTime - tenant.minimumDeliveryTime`). Múltiples schedules el mismo día
+  (ej: mediodía + noche) se respetan: el desired debe caer en alguna de las ventanas.
 - El `total` se calcula **server-side** como `Σ (price × quantity)` usando el precio actual de cada
-  producto (snapshot en `order_items`). **El `total` NO incluye el `deliveryFee`.**
+  producto (snapshot en `order_items`). **El `total` NO incluye el `deliveryFee`.
 - Cada `productId` se valida en `ProductsService.findOneForOrder()` con **el mismo filtro de visibilidad
   que el catálogo público** (`GET /:tenant/products`, INNER JOIN a `categories`): debe pertenecer al tenant,
   estar `isActive = true`, no estar soft-deleted, y su categoría debe estar `is_active = true` y sin
@@ -613,6 +621,7 @@ Obtiene configuración pública del tenant (nombre, logo, colores, horarios, etc
   "isOpen": true,
   "deliveryCostEnabled": true,
   "deliveryCost": 500,
+  "minimumDeliveryTime": 30,
   "schedule": {
     "regular": [
       { "id": "uuid", "dayOfWeek": 1, "openingTime": "09:00", "closingTime": "18:00" }
@@ -654,6 +663,7 @@ Actualiza la configuración del tenant.
 | `isOpen` | boolean | no | |
 | `deliveryCostEnabled` | boolean | no | |
 | `deliveryCost` | number (≥0) | no | |
+| `minimumDeliveryTime` | integer (≥0) | no | minutos de preparación/envío mínimos |
 | `logo` | file | no | imagen subida a Cloudinary (max 1) |
 | `banner` | file | no | imagen subida a Cloudinary (max 1) |
 
@@ -685,7 +695,7 @@ Lista todos los horarios regulares.
 #### `POST /:tenant/admin/schedule` 🔒
 Crea un horario regular.
 ```json
-{ "dayOfWeek": 1, "openingTime": "09:00", "closingTime": "18:00" }
+{ "dayOfWeek": 1, "openingTime": "09:00", "closingTime": "18:00", "maxOrderTime": "17:30" }
 ```
 
 | Campo | Tipo | Validación |
@@ -693,6 +703,7 @@ Crea un horario regular.
 | `dayOfWeek` | number | 1 (lunes) – 7 (domingo), entero |
 | `openingTime` | string | `HH:MM` (`/^\d{2}:\d{2}$/`) |
 | `closingTime` | string | `HH:MM` (`/^\d{2}:\d{2}$/`) |
+| `maxOrderTime` | string (`HH:mm` o `HH:mm:ss`) | no | hora tope del día para programar entregas; si se omite, default = `closingTime - tenant.minimumDeliveryTime` |
 
 #### `PATCH /:tenant/admin/schedule/:id` 🔒
 Actualiza un horario regular (mismos campos que creación, todos opcionales).
@@ -712,8 +723,11 @@ Crea una excepción.
 ```json
 {
   "date": "2025-12-25",
-  "isOpen": false,
-  "reason": "Navidad"
+  "isOpen": true,
+  "openingTime": "10:00",
+  "closingTime": "15:00",
+  "maxOrderTime": "14:30",
+  "reason": "Navidad (horario especial)"
 }
 ```
 
@@ -723,10 +737,10 @@ Crea una excepción.
 | `isOpen` | boolean | sí | |
 | `openingTime` | string (HH:MM) | sí si `isOpen: true` | |
 | `closingTime` | string (HH:MM) | sí si `isOpen: true` | |
+| `maxOrderTime` | string (HH:MM) | sí si `isOpen: true` | hora tope para entregas ese día; si se omite en el PATCH pero el día pasa a `isOpen: true`, queda `null` y se calcula como `closingTime - tenant.minimumDeliveryTime` |
 | `reason` | string | no | |
 
-Si `isOpen: true`, se requieren `openingTime` y `closingTime`. Si `isOpen: false`, ambos se
-guardan como `null` (el service los anula explícitamente aunque se envíen).
+Si `isOpen: true`, se requieren `openingTime`, `closingTime` y `maxOrderTime`. Si `isOpen: false`, los tres horarios se guardan como `null` (el service los anula explícitamente aunque se envíen).
 
 #### `PATCH /:tenant/admin/exceptions/:id` 🔒
 Actualiza una excepción (campos parciales).
@@ -794,6 +808,7 @@ Hello World!
   "paymentMethod": "EFECTIVO",
   "deliveryType": "RETIRO_LOCAL",
   "notes": null,
+  "desiredDeliveryTime": "2026-10-05T20:30:00.000Z",
   "customer": {
     "id": "uuid",
     "name": "Juan Pérez",

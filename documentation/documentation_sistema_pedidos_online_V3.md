@@ -504,6 +504,7 @@ GET /:tenant/availability
   "isOpen": true,
   "deliveryCostEnabled": true,
   "deliveryCost": 500.00,
+  "minimumDeliveryTime": 30,
   "schedule": {
     "regular": [
       { "id": "uuid", "dayOfWeek": 1, "openingTime": "11:00", "closingTime": "23:00" },
@@ -706,6 +707,7 @@ tenants                  → negocios registrados
                            (id, slug, name, logo, banner, primary_color, secondary_color,
                             description, whatsapp, address, is_open, cbu, alias,
                             account_holder, bank, delivery_cost_enabled, delivery_cost,
+                            minimum_delivery_time,
                             created_at, updated_at)
 
 users                    → dueños de negocios
@@ -721,7 +723,8 @@ products                 → productos
 orders                   → pedidos
                            (id, tenant_id, customer_id, delivery_id, status (ENUM),
                             tracking_uuid, cancellation_reason, total, payment_method (ENUM),
-                            delivery_type (ENUM), notes, created_at, updated_at)
+                            delivery_type (ENUM), notes, desired_delivery_time,
+                            created_at, updated_at)
 
 order_items              → detalle del pedido
                            (id, order_id, product_id, name, quantity, price)
@@ -733,11 +736,12 @@ deliveries               → datos de envío a domicilio
                            (id, address, notes, delivery_fee)
 
 regular_schedules        → horario semanal
-                           (id, tenant_id, day_of_week (SMALLINT), opening_time, closing_time)
+                           (id, tenant_id, day_of_week (SMALLINT), opening_time, closing_time,
+                            max_order_time)
 
 availability_exceptions  → cierres/aperturas excepcionales
                            (id, tenant_id, date, is_open, opening_time, closing_time,
-                            reason, created_at)
+                            max_order_time, reason, created_at)
 ```
 
 ### Notas del modelo
@@ -767,11 +771,11 @@ availability_exceptions  → cierres/aperturas excepcionales
 
 | Clase | Atributos clave | Métodos |
 |-------|----------------|---------|
-| **Tenant** | id (UUID), slug, name, logo, banner, primary_color, secondary_color, description, whatsapp, address, is_open, cbu, alias, account_holder, bank, delivery_cost_enabled, delivery_cost | — |
+| **Tenant** | id (UUID), slug, name, logo, banner, primary_color, secondary_color, description, whatsapp, address, is_open, cbu, alias, account_holder, bank, delivery_cost_enabled, delivery_cost, minimum_delivery_time | — |
 | **User** | id (UUID), tenant_id, email, password, role | login(), register() |
 | **Category** | id (UUID), tenant_id, name, is_active, deleted_at | createCategory(), updateCategory(), deleteCategory(), activateCategory(), hideCategory() |
 | **Product** | id (UUID), tenant_id, category_id, name, description, price, image_url, is_active, deleted_at | createProduct(), updateProduct(), deleteProduct(), activateProduct(), hideProduct(), removeImage() |
-| **Order** | id (UUID), tenant_id, customer_id, delivery_id, status, tracking_uuid, cancellation_reason, total, payment_method, delivery_type, notes | createOrder(), confirmOrder(), readyOrder(), deliverOrder(), markAsNotPickedUp(), cancelOrder() |
+| **Order** | id (UUID), tenant_id, customer_id, delivery_id, status, tracking_uuid, cancellation_reason, total, payment_method, delivery_type, notes, desired_delivery_time | createOrder(), confirmOrder(), readyOrder(), deliverOrder(), markAsNotPickedUp(), cancelOrder() |
 | **OrderItem** | id (UUID), order_id, product_id, name, quantity, price | — |
 | **Customer** | id (UUID), name, phone, address | updatePhone() |
 | **Delivery** | id (UUID), address, notes, delivery_fee | — |
