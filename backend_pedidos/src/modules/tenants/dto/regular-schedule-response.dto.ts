@@ -3,4 +3,5 @@ export class RegularScheduleResponseDto {
   dayOfWeek: number;
   openingTime: string;
   closingTime: string;
+  maxOrderTime: string | null;
 }

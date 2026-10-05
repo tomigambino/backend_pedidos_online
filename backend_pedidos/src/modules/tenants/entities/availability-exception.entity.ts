@@ -34,6 +34,9 @@ export class AvailabilityException {
   @Column({ name: 'closing_time', type: 'time', nullable: true })
   closingTime: string | null;
 
+  @Column({ name: 'max_order_time', type: 'time', nullable: true })
+  maxOrderTime: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   reason: string | null;
 

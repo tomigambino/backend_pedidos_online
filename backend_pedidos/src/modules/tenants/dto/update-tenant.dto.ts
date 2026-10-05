@@ -3,6 +3,7 @@ import {
   IsOptional,
   IsBoolean,
   IsNumber,
+  IsInt,
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
@@ -69,4 +70,10 @@ export class UpdateTenantDto {
   @Min(0)
   @IsOptional()
   deliveryCost?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  minimumDeliveryTime?: number;
 }

@@ -48,6 +48,7 @@ INSERT INTO tenants (
     is_open,
     delivery_cost_enabled,
     delivery_cost,
+    minimum_delivery_time,
     logo,
     banner,
     whatsapp,
@@ -68,6 +69,7 @@ INSERT INTO tenants (
     TRUE,
     TRUE,
     500.00,
+    30,
     NULL,
     NULL,
     NULL,
@@ -199,12 +201,12 @@ INSERT INTO products (id, tenant_id, category_id, name, description, price, is_a
 -- dayOfWeek: 1 = lunes, 6 = sábado. Cerrado los domingos.
 -- ============================================================================
 
-INSERT INTO regular_schedules (id, tenant_id, day_of_week, opening_time, closing_time) VALUES
-    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 1, '09:00', '22:00'),
-    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 2, '09:00', '22:00'),
-    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 3, '09:00', '22:00'),
-    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 4, '09:00', '22:00'),
-    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 5, '09:00', '22:00'),
-    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 6, '09:00', '22:00');
+INSERT INTO regular_schedules (id, tenant_id, day_of_week, opening_time, closing_time, max_order_time) VALUES
+    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 1, '09:00', '22:00', '21:30:00'),
+    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 2, '09:00', '22:00', '21:30:00'),
+    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 3, '09:00', '22:00', '21:30:00'),
+    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 4, '09:00', '22:00', '21:30:00'),
+    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 5, '09:00', '22:00', '21:30:00'),
+    (gen_random_uuid(), 'd1a2b3c4-0001-4000-8000-000000000001', 6, '09:00', '22:00', '21:30:00');
 
 COMMIT;

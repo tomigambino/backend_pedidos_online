@@ -47,6 +47,9 @@ export class Tenant {
   })
   deliveryCost: number;
 
+  @Column({ name: 'minimum_delivery_time', type: 'int', default: 0 })
+  minimumDeliveryTime: number;
+
   @Column({ nullable: true })
   description: string;
 

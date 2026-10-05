@@ -29,4 +29,7 @@ export class RegularSchedule {
 
   @Column({ name: 'closing_time', type: 'time' })
   closingTime: string;
+
+  @Column({ name: 'max_order_time', type: 'time', nullable: true })
+  maxOrderTime: string | null;
 }

@@ -4,5 +4,6 @@ export class ExceptionResponseDto {
   isOpen: boolean;
   openingTime: string | null;
   closingTime: string | null;
+  maxOrderTime: string | null;
   reason: string | null;
 }

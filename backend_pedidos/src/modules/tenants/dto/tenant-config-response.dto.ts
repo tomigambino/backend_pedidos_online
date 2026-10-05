@@ -13,6 +13,7 @@ export class TenantConfigResponseDto {
   isOpen: boolean;
   deliveryCostEnabled: boolean;
   deliveryCost: number | null;
+  minimumDeliveryTime: number;
   schedule: {
     regular: RegularScheduleResponseDto[];
     exceptions: ExceptionResponseDto[];
